@@ -72,7 +72,7 @@ export default function ProductosPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-6">
+    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <Package className="w-6 h-6 text-brand-blue" /> Productos

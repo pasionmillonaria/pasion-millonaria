@@ -95,7 +95,7 @@ export default function ApartadoDetallePage() {
   if (!apartado) return <div className="p-6 text-center text-gray-500">Apartado no encontrado</div>;
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-6">
+    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100">
           <ChevronLeft className="w-6 h-6 text-gray-600" />

@@ -22,9 +22,15 @@ function DashboardGuard({ children }: { children: React.ReactNode }) {
   if (profile === null) return <Spinner className="h-screen" />;
 
   return (
-    <>
-      <div className="min-h-screen bg-gray-50 pb-20">{children}</div>
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* NavBar renderiza sidebar (md+) y bottom nav (mobile) */}
       <NavBar />
+
+      {/* Contenido: margen izquierdo para sidebar en desktop, padding inferior para bottom nav en mobile */}
+      <main className="flex-1 min-w-0 md:ml-60 pb-20 md:pb-8 overflow-x-hidden">
+        {children}
+      </main>
+
       <Toaster
         position="top-center"
         toastOptions={{
@@ -33,7 +39,7 @@ function DashboardGuard({ children }: { children: React.ReactNode }) {
           success: { iconTheme: { primary: "#003366", secondary: "white" } },
         }}
       />
-    </>
+    </div>
   );
 }
 

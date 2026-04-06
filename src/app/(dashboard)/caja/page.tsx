@@ -142,7 +142,7 @@ export default function CajaPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-6">
+    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <LayoutDashboard className="w-6 h-6 text-brand-blue" />

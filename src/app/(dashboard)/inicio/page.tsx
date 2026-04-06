@@ -5,8 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ShoppingBag, PackagePlus, Bookmark, ArrowLeftRight,
-  AlertTriangle, LogOut, RefreshCw, ChevronRight,
-  Eye, TrendingUp,
+  AlertTriangle, RefreshCw, ChevronRight, Eye, TrendingUp,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -15,18 +14,21 @@ import type { VApartadosPendientes, VStockBajo, VResumenCajaHoy } from "@/lib/ty
 import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
 
-// Acciones solo para admin
 const accionesAdmin = [
-  { href: "/venta",    label: "Venta",     icon: ShoppingBag,    color: "bg-brand-blue",  desc: "Registrar salida" },
-  { href: "/entrada",  label: "Entrada",   icon: PackagePlus,    color: "bg-green-600",   desc: "Nueva mercancía" },
-  { href: "/apartados/nuevo", label: "Apartado", icon: Bookmark, color: "bg-brand-gold",  desc: "Cliente aparta" },
-  { href: "/traslado", label: "Traslado",  icon: ArrowLeftRight, color: "bg-purple-600",  desc: "Tienda ↔ Bodega" },
+  { href: "/venta",           label: "Venta",     icon: ShoppingBag,    color: "bg-brand-blue",  desc: "Registrar salida" },
+  { href: "/entrada",         label: "Entrada",   icon: PackagePlus,    color: "bg-green-600",   desc: "Nueva mercancía" },
+  { href: "/apartados/nuevo", label: "Apartado",  icon: Bookmark,       color: "bg-brand-gold",  desc: "Cliente aparta" },
+  { href: "/traslado",        label: "Traslado",  icon: ArrowLeftRight, color: "bg-purple-600",  desc: "Tienda ↔ Bodega" },
+];
+
+const accionesExtra = [
+  { href: "/devolucion", icon: RefreshCw,      color: "bg-orange-100", iconColor: "text-orange-600", label: "Devolución",  desc: "Cliente devuelve" },
+  { href: "/cambio",     icon: ArrowLeftRight, color: "bg-blue-100",   iconColor: "text-blue-600",   label: "Cambio",      desc: "Cambio de producto" },
 ];
 
 export default function InicioPage() {
   const supabase = createClient();
-  const { profile, setProfile, isAdmin } = useProfile();
-  const router = useRouter();
+  const { profile, isAdmin } = useProfile();
 
   const [apartados, setApartados] = useState<VApartadosPendientes[]>([]);
   const [stockBajo, setStockBajo] = useState<VStockBajo[]>([]);
@@ -36,8 +38,8 @@ export default function InicioPage() {
   async function fetchData() {
     setLoading(true);
     const [{ data: ap }, { data: sb }] = await Promise.all([
-      supabase.from("v_apartados_pendientes").select("*").order("fecha", { ascending: true }).limit(5),
-      supabase.from("v_stock_bajo").select("*").limit(10),
+      supabase.from("v_apartados_pendientes").select("*").order("fecha", { ascending: true }).limit(10),
+      supabase.from("v_stock_bajo").select("*").limit(20),
     ]);
     setApartados(ap ?? []);
     setStockBajo(sb ?? []);
@@ -50,23 +52,17 @@ export default function InicioPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  function handleSalir() {
-    setProfile(null);
-    router.push("/");
-  }
-
   const totalVentasHoy = resumenHoy.reduce((s, r) => s + r.total, 0);
-  const cantVentasHoy = resumenHoy.reduce((s, r) => s + r.cantidad, 0);
+  const cantVentasHoy  = resumenHoy.reduce((s, r) => s + r.cantidad, 0);
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-6">
+    <div className="px-4 md:px-8 pt-6 max-w-7xl mx-auto">
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow"
-            style={{ backgroundColor: profile?.color ?? "#003366" }}
-          >
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow"
+            style={{ backgroundColor: profile?.color ?? "#003366" }}>
             {profile?.emoji}
           </div>
           <div>
@@ -74,170 +70,177 @@ export default function InicioPage() {
             <p className="font-bold text-gray-900">{profile?.nombre}</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
-            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-          </button>
-          <button onClick={handleSalir} className="p-2 rounded-xl hover:bg-red-50 text-red-400">
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
+        <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
+          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
-      {/* Banner */}
-      <div className="bg-brand-blue rounded-2xl p-4 mb-6 flex items-center gap-4">
-        <div className="w-12 h-12 bg-brand-gold rounded-xl flex items-center justify-center shrink-0 shadow">
-          <span className="text-white font-black text-lg">PM</span>
-        </div>
-        <div>
-          <p className="text-white font-bold">Pasión Millonaria</p>
-          <p className="text-blue-200 text-xs">Inventario & Punto de Venta</p>
-        </div>
-        {isAdmin && cantVentasHoy > 0 && (
-          <div className="ml-auto text-right">
-            <p className="text-white font-bold text-sm">{formatCurrency(totalVentasHoy)}</p>
-            <p className="text-blue-200 text-xs">{cantVentasHoy} ventas hoy</p>
-          </div>
-        )}
-      </div>
-
-      {/* Acciones rápidas — solo admin */}
+      {/* Banner ventas del día (admin) */}
       {isAdmin && (
-        <>
-          <h2 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Acciones rápidas</h2>
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {accionesAdmin.map(({ href, label, icon: Icon, color, desc }) => (
-              <Link key={href} href={href}
-                className="card hover:shadow-md active:scale-95 transition-all duration-150 flex flex-col items-center text-center gap-3 py-5">
-                <div className={`${color} w-12 h-12 rounded-2xl flex items-center justify-center shadow`}>
-                  <Icon className="text-white w-6 h-6" />
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900 text-sm">{label}</p>
-                  <p className="text-gray-400 text-xs">{desc}</p>
-                </div>
-              </Link>
-            ))}
+        <div className="bg-brand-blue rounded-2xl p-5 mb-6 flex flex-wrap items-center gap-4">
+          <div className="w-12 h-12 bg-brand-gold rounded-xl flex items-center justify-center shrink-0 shadow">
+            <span className="text-white font-black text-lg">PM</span>
           </div>
-        </>
-      )}
-
-      {/* Vista empleado — solo lectura */}
-      {!isAdmin && (
-        <div className="card mb-4 bg-purple-50 border-purple-100">
-          <div className="flex items-center gap-2 mb-2">
-            <Eye className="w-5 h-5 text-purple-500" />
-            <p className="font-semibold text-purple-700">Modo consulta</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-bold">Pasión Millonaria</p>
+            <p className="text-blue-200 text-xs">Inventario & Punto de Venta</p>
           </div>
-          <p className="text-purple-500 text-sm">
-            Puedes consultar el inventario y los apartados pendientes.
-          </p>
-        </div>
-      )}
-
-      {/* Resumen ventas del día — admin y empleado pueden ver */}
-      {isAdmin && resumenHoy.length > 0 && (
-        <div className="card mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-500" /> Ventas de hoy
-            </h3>
-            <Link href="/caja" className="text-brand-blue text-sm font-medium">Ver caja</Link>
-          </div>
-          <div className="space-y-1">
-            {resumenHoy.map(r => (
-              <div key={r.metodo_pago} className="flex justify-between text-sm py-1 border-b border-gray-50 last:border-0">
-                <span className="text-gray-600 capitalize">{r.metodo_pago}</span>
-                <span className="font-semibold">{formatCurrency(r.total)}</span>
-              </div>
-            ))}
-            <div className="flex justify-between font-bold pt-1">
-              <span>Total</span>
-              <span className="text-brand-blue">{formatCurrency(totalVentasHoy)}</span>
+          {cantVentasHoy > 0 && (
+            <div className="text-right">
+              <p className="text-white font-bold text-xl">{formatCurrency(totalVentasHoy)}</p>
+              <p className="text-blue-200 text-sm">{cantVentasHoy} venta{cantVentasHoy !== 1 ? "s" : ""} hoy</p>
             </div>
+          )}
+          {isAdmin && (
+            <Link href="/caja"
+              className="shrink-0 bg-white/15 hover:bg-white/25 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
+              Ver caja →
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* Vista empleado */}
+      {!isAdmin && (
+        <div className="card mb-6 bg-purple-50 border-purple-100 flex items-center gap-3">
+          <Eye className="w-6 h-6 text-purple-500 shrink-0" />
+          <div>
+            <p className="font-semibold text-purple-700">Modo consulta</p>
+            <p className="text-purple-500 text-sm">Puedes consultar inventario y apartados pendientes.</p>
           </div>
         </div>
       )}
 
-      {/* Apartados pendientes */}
-      <div className="card mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <Bookmark className="w-5 h-5 text-brand-gold" />
-            Apartados pendientes
-            {apartados.length > 0 && <Badge variant="warning">{apartados.length}</Badge>}
-          </h3>
-          <Link href="/apartados" className="text-brand-blue text-sm font-medium">Ver todos</Link>
+      {/* Grid principal — desktop usa 2 columnas */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Columna izquierda: acciones + resumen */}
+        <div className="lg:col-span-2 space-y-6">
+
+          {/* Acciones rápidas — solo admin */}
+          {isAdmin && (
+            <div>
+              <h2 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Acciones rápidas</h2>
+              {/* 2 cols en mobile, 4 cols en md+ */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {accionesAdmin.map(({ href, label, icon: Icon, color, desc }) => (
+                  <Link key={href} href={href}
+                    className="card hover:shadow-md active:scale-95 transition-all flex flex-col items-center text-center gap-3 py-5">
+                    <div className={`${color} w-12 h-12 rounded-2xl flex items-center justify-center shadow`}>
+                      <Icon className="text-white w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">{label}</p>
+                      <p className="text-gray-400 text-xs hidden sm:block">{desc}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Resumen ventas por método — admin */}
+          {isAdmin && resumenHoy.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-green-500" /> Ventas de hoy por método
+                </h3>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {resumenHoy.map(r => (
+                  <div key={r.metodo_pago} className="bg-gray-50 rounded-xl p-3 text-center">
+                    <p className="text-xs text-gray-500 capitalize mb-1">{r.metodo_pago}</p>
+                    <p className="font-bold text-gray-900 text-sm">{formatCurrency(r.total)}</p>
+                    <p className="text-xs text-gray-400">{r.cantidad} venta{r.cantidad !== 1 ? "s" : ""}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Acciones secundarias — admin */}
+          {isAdmin && (
+            <div className="card">
+              <h3 className="font-bold text-gray-700 mb-3 text-sm">Más acciones</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {accionesExtra.map(item => (
+                  <Link key={item.href} href={item.href}
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 active:scale-95 transition-all">
+                    <div className={`w-9 h-9 ${item.color} rounded-xl flex items-center justify-center shrink-0`}>
+                      <item.icon className={`w-5 h-5 ${item.iconColor}`} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm">{item.label}</p>
+                      <p className="text-xs text-gray-400">{item.desc}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        {loading ? (
-          <Spinner className="py-4" />
-        ) : apartados.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-4">Sin apartados pendientes</p>
-        ) : (
-          <div className="space-y-2">
-            {apartados.map(a => (
-              <Link key={a.id} href={`/apartados/${a.id}`}
-                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 transition-all">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{a.cliente_nombre}</p>
-                  <p className="text-xs text-gray-500 truncate">{a.referencia} — T: {a.talla}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-bold text-red-600">{formatCurrency(a.saldo)}</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-              </Link>
-            ))}
+
+        {/* Columna derecha: apartados + stock bajo */}
+        <div className="space-y-6">
+
+          {/* Apartados pendientes */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <Bookmark className="w-5 h-5 text-brand-gold" />
+                Apartados
+                {apartados.length > 0 && <Badge variant="warning">{apartados.length}</Badge>}
+              </h3>
+              <Link href="/apartados" className="text-brand-blue text-sm font-medium">Ver todos</Link>
+            </div>
+            {loading ? (
+              <Spinner className="py-4" />
+            ) : apartados.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-4">Sin apartados pendientes</p>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {apartados.map(a => (
+                  <Link key={a.id} href={`/apartados/${a.id}`}
+                    className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 transition-all">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate">{a.cliente_nombre}</p>
+                      <p className="text-xs text-gray-500 truncate">{a.referencia} · T:{a.talla}</p>
+                    </div>
+                    <p className="text-sm font-bold text-red-600 shrink-0">{formatCurrency(a.saldo)}</p>
+                    <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Stock bajo */}
+          {!loading && stockBajo.length > 0 && (
+            <div className="card">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <h3 className="font-bold text-gray-800">Stock bajo</h3>
+                <Badge variant="warning">{stockBajo.length}</Badge>
+              </div>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {stockBajo.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">{s.referencia}</p>
+                      <p className="text-xs text-gray-500">{s.talla}</p>
+                    </div>
+                    <Badge variant={s.stock_total === 0 ? "danger" : "warning"}>{s.stock_total} uds</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Stock bajo */}
-      {!loading && stockBajo.length > 0 && (
-        <div className="card mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-            <h3 className="font-bold text-gray-800">Stock bajo</h3>
-            <Badge variant="warning">{stockBajo.length}</Badge>
-          </div>
-          <div className="space-y-2">
-            {stockBajo.slice(0, 4).map((s, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-amber-50">
-                <div>
-                  <p className="font-semibold text-sm">{s.referencia}</p>
-                  <p className="text-xs text-gray-500">{s.talla}</p>
-                </div>
-                <Badge variant={s.stock_total === 0 ? "danger" : "warning"}>{s.stock_total} uds</Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Más acciones — solo admin */}
-      {isAdmin && (
-        <div className="card mb-6">
-          <h3 className="font-bold text-gray-700 mb-3 text-sm">Más acciones</h3>
-          <div className="space-y-1">
-            {[
-              { href: "/devolucion", icon: RefreshCw, color: "bg-orange-100", iconColor: "text-orange-600", label: "Devolución", desc: "Cliente devuelve una prenda" },
-              { href: "/cambio", icon: ArrowLeftRight, color: "bg-blue-100", iconColor: "text-blue-600", label: "Cambio", desc: "Cambiar producto por otro" },
-            ].map(item => (
-              <Link key={item.href} href={item.href}
-                className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 active:scale-95 transition-all">
-                <div className={`w-9 h-9 ${item.color} rounded-xl flex items-center justify-center`}>
-                  <item.icon className={`w-5 h-5 ${item.iconColor}`} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{item.label}</p>
-                  <p className="text-xs text-gray-400">{item.desc}</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="h-4" />
     </div>
   );
 }

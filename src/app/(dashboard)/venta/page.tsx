@@ -139,7 +139,7 @@ export default function VentaPage() {
 
   if (paso === "confirmado") {
     return (
-      <div className="max-w-lg mx-auto px-4 pt-16 text-center">
+      <div className="max-w-2xl mx-auto px-4 md:px-8 pt-16 text-center">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <CheckCircle className="w-10 h-10 text-green-600" />
         </div>
@@ -162,7 +162,7 @@ export default function VentaPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-6">
+    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100">
