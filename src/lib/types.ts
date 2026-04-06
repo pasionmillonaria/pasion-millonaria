@@ -8,6 +8,7 @@ export type Json =
 
 export type Rol = "admin" | "empleado";
 export type TipoMovimiento = "entrada" | "salida" | "devolucion";
+export type TipoRegistroCaja = "venta" | "gasto" | "ingreso" | "caja_fuerte";
 export type CanalMovimiento =
   | "venta_tienda"
   | "domicilio"
@@ -186,13 +187,37 @@ export interface Database {
           total_descuentos: number;
           total_devoluciones: number;
           total_gastos: number;
+          total_ingresos_extra: number;
           guardado_caja_fuerte: number;
           saldo_final: number;
           cantidad_ventas: number;
+          efectivo_contado: number | null;
+          diferencia_caja: number | null;
           estado: EstadoCaja;
         };
         Insert: Omit<Database["public"]["Tables"]["caja_diaria"]["Row"], "id">;
         Update: Partial<Database["public"]["Tables"]["caja_diaria"]["Row"]>;
+      };
+      registros_caja: {
+        Row: {
+          id: string;
+          fecha: string;
+          hora: string;
+          tipo: TipoRegistroCaja;
+          descripcion: string | null;
+          producto_id: number | null;
+          talla_id: number | null;
+          cantidad: number;
+          valor: number;
+          metodo_pago: string | null;
+          monto_efectivo: number;
+          monto_transferencia: number;
+          caja_diaria_id: number | null;
+          usuario_id: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["registros_caja"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["registros_caja"]["Row"]>;
       };
       gastos: {
         Row: {
@@ -291,6 +316,7 @@ export type Apartado = Database["public"]["Tables"]["apartados"]["Row"];
 export type Abono = Database["public"]["Tables"]["abonos"]["Row"];
 export type CajaDiaria = Database["public"]["Tables"]["caja_diaria"]["Row"];
 export type Gasto = Database["public"]["Tables"]["gastos"]["Row"];
+export type RegistroCaja = Database["public"]["Tables"]["registros_caja"]["Row"];
 
 export type VStockTotal = Database["public"]["Views"]["v_stock_total"]["Row"];
 export type VStockBajo = Database["public"]["Views"]["v_stock_bajo"]["Row"];
