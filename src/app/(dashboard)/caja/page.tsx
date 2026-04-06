@@ -1,16 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Plus, Lock, ChevronDown, ChevronUp } from "lucide-react";
+import { 
+  LayoutDashboard, 
+  Plus, 
+  Lock, 
+  ChevronDown, 
+  ChevronUp, 
+  Download, 
+  RefreshCcw,
+  Wallet,
+  Shield,
+  ArrowRightLeft,
+  CheckCircle2
+} from "lucide-react";
+import html2canvas from "html2canvas";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/context/UserContext";
 import { formatCurrency, formatDate, LABELS_METODO_PAGO } from "@/lib/utils";
-import type { VResumenCajaHoy, Gasto, CajaDiaria, CategoriaGasto, MetodoPago } from "@/lib/types";
+import type { Gasto, CajaDiaria, CategoriaGasto, MetodoPago, Producto, Talla } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
 import Spinner from "@/components/ui/Spinner";
+import ExcelRow from "@/components/ExcelRow";
+import CierreResumen from "@/components/CierreResumen";
 import toast from "react-hot-toast";
 
 const CATEGORIAS_GASTO: { value: CategoriaGasto; label: string }[] = [
@@ -18,53 +33,119 @@ const CATEGORIAS_GASTO: { value: CategoriaGasto; label: string }[] = [
   { value: "transporte", label: "Transporte" },
   { value: "insumos", label: "Insumos" },
   { value: "servicios", label: "Servicios" },
-  { value: "caja_fuerte", label: "Caja Fuerte" },
+  { value: "caja_fuerte", label: "Guardado" },
   { value: "otro", label: "Otro" },
 ];
 
-const METODOS: { value: MetodoPago; label: string }[] = [
-  { value: "efectivo", label: "Efectivo" },
-  { value: "nequi", label: "Nequi" },
-  { value: "transferencia", label: "Transferencia" },
-];
+const isUUID = (str: string | null | undefined): boolean => 
+  !!(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str));
 
 export default function CajaPage() {
   const supabase = createClient();
   const { user, isAdmin } = useUser();
   const router = useRouter();
 
-  const [resumen, setResumen] = useState<VResumenCajaHoy[]>([]);
-  const [gastos, setGastos] = useState<Gasto[]>([]);
-  const [historial, setHistorial] = useState<CajaDiaria[]>([]);
-  const [cajaHoy, setCajaHoy] = useState<CajaDiaria | null>(null);
   const [loading, setLoading] = useState(true);
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [tallas, setTallas] = useState<Talla[]>([]);
+  
+  const [ventas, setVentas] = useState<any[]>([]);
+  const [gastos, setGastos] = useState<Gasto[]>([]);
+  const [cajaHoy, setCajaHoy] = useState<CajaDiaria | null>(null);
+  const [saldoAnt, setSaldoAnt] = useState({ caja: 0, guardado: 0 });
+  
+  const [contadoReal, setContadoReal] = useState<string>("");
+  const [retiroGuardado, setRetiroGuardado] = useState<string>("");
+  
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
-
+  const [historial, setHistorial] = useState<CajaDiaria[]>([]);
+  
   const [modalGasto, setModalGasto] = useState(false);
-  const [gastoConcepto, setGastoConcepto] = useState("");
-  const [gastoMonto, setGastoMonto] = useState("");
-  const [gastoCategoria, setGastoCategoria] = useState<CategoriaGasto>("otro");
-  const [gastoMetodo, setGastoMetodo] = useState<MetodoPago>("efectivo");
-  const [loadingGasto, setLoadingGasto] = useState(false);
-
-  const [modalCerrar, setModalCerrar] = useState(false);
-  const [saldoInicial, setSaldoInicial] = useState("");
-  const [guardadoCajaFuerte, setGuardadoCajaFuerte] = useState("");
-  const [loadingCerrar, setLoadingCerrar] = useState(false);
+  const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "otro" as CategoriaGasto });
+  const [loadingAction, setLoadingAction] = useState(false);
 
   async function cargarDatos() {
     setLoading(true);
     const hoy = new Date().toISOString().slice(0, 10);
-    const [{ data: res }, { data: gas }, { data: hist }, { data: cajaAbierta }] = await Promise.all([
-      supabase.from("v_resumen_caja_hoy").select("*"),
-      supabase.from("gastos").select("*").gte("fecha", hoy + "T00:00:00").order("fecha", { ascending: false }),
-      supabase.from("caja_diaria").select("*").order("fecha", { ascending: false }).limit(10),
-      supabase.from("caja_diaria").select("*").eq("fecha", hoy).eq("estado", "abierta").single(),
+    
+    // 1. Productos y Tallas para el Excel
+    const [{ data: prods }, { data: tals }] = await Promise.all([
+      supabase.from("productos").select("*").eq("activo", true),
+      supabase.from("tallas").select("*")
     ]);
-    setResumen(res ?? []);
+    setProductos(prods ?? []);
+    setTallas(tals ?? []);
+
+    // 2. Ventas de hoy (Movimientos)
+    // Intentamos obtener montos e/t de la nota si no existen columnas
+    const { data: movs } = await supabase
+      .from("movimientos")
+      .select(`
+        id, cantidad, precio_venta, descuento, metodo_pago, nota,
+        productos(referencia),
+        tallas(nombre)
+      `)
+      .eq("tipo", "salida")
+      .gte("fecha", hoy + "T00:00:00")
+      .order("fecha", { ascending: false });
+
+    const parsedVentas = (movs ?? []).map(m => {
+      let e = 0, t = 0;
+      if (m.metodo_pago === "efectivo") e = (m.precio_venta! - (m.descuento || 0)) * m.cantidad;
+      else if (m.metodo_pago === "transferencia") t = (m.precio_venta! - (m.descuento || 0)) * m.cantidad;
+      else if (m.nota?.startsWith("{")) {
+        try {
+          const p = JSON.parse(m.nota);
+          e = p.e || 0; t = p.t || 0;
+        } catch(err) {}
+      }
+      
+      const prod = Array.isArray(m.productos) ? m.productos[0] : m.productos;
+      const tal = Array.isArray(m.tallas) ? m.tallas[0] : m.tallas;
+
+      return {
+        ...m,
+        referencia: (prod as any)?.referencia,
+        talla: (tal as any)?.nombre,
+        total: (m.precio_venta! - (m.descuento || 0)) * m.cantidad,
+        monto_efectivo: e,
+        monto_transferencia: t
+      };
+    });
+    setVentas(parsedVentas);
+
+    // 3. Gastos
+    const { data: gas } = await supabase
+      .from("gastos")
+      .select("*")
+      .gte("fecha", hoy + "T00:00:00")
+      .order("fecha", { ascending: false });
     setGastos(gas ?? []);
-    setHistorial(hist ?? []);
+
+    // 4. Caja Diaria y Saldo Anterior
+    const { data: cajaAbierta } = await supabase
+      .from("caja_diaria")
+      .select("*")
+      .eq("fecha", hoy)
+      .eq("estado", "abierta")
+      .single();
     setCajaHoy(cajaAbierta ?? null);
+
+    const { data: ultimoCierre } = await supabase
+      .from("caja_diaria")
+      .select("*")
+      .eq("estado", "cerrada")
+      .lt("fecha", hoy)
+      .order("fecha", { ascending: false })
+      .limit(1);
+
+    if (ultimoCierre?.[0]) {
+      setSaldoAnt({ 
+        caja: ultimoCierre[0].saldo_final, 
+        guardado: ultimoCierre[0].guardado_caja_fuerte || 0 
+      });
+    }
+
     setLoading(false);
   }
 
@@ -80,256 +161,343 @@ export default function CajaPage() {
     );
   }
 
-  const totalVentas = resumen.reduce((s, r) => s + r.total, 0);
-  const totalGastos = gastos.reduce((s, g) => s + g.monto, 0);
-  const efectivoHoy = resumen.find(r => r.metodo_pago === "efectivo")?.total ?? 0;
+  const handleSaveVenta = async (data: any) => {
+    setLoadingAction(true);
+    // Usamos 'nota' para guardar el desglose si es mixto
+    const notaString = data.metodo_pago === "mixto" 
+      ? JSON.stringify({ e: data.monto_efectivo, t: data.monto_transferencia })
+      : "";
 
-  async function agregarGasto() {
-    const monto = parseFloat(gastoMonto);
-    if (!gastoConcepto.trim() || !monto) { toast.error("Completa todos los campos"); return; }
-    setLoadingGasto(true);
-    const { error } = await supabase.from("gastos").insert({
-      concepto: gastoConcepto.trim(),
-      monto,
-      categoria: gastoCategoria,
-      metodo_pago: gastoMetodo,
-      registrado_por: user?.id ?? null,
+    const { error } = await supabase.from("movimientos").insert({
+      producto_id: Number(data.producto_id),
+      talla_id: Number(data.talla_id),
+      cantidad: Number(data.cantidad),
+      precio_venta: Number(data.precio_venta),
+      metodo_pago: data.metodo_pago as MetodoPago,
+      nota: notaString || null,
+      tipo: "salida",
+      canal: "venta_tienda",
+      usuario_id: isUUID(user?.id) ? user?.id : null,
+      ubicacion_id: 1
     });
-    if (error) { toast.error("Error: " + error.message); setLoadingGasto(false); return; }
-    toast.success("Gasto registrado");
-    setModalGasto(false);
-    setGastoConcepto(""); setGastoMonto("");
-    await cargarDatos();
-    setLoadingGasto(false);
-  }
 
-  async function cerrarCaja() {
-    const saldoIni = parseFloat(saldoInicial) || 0;
-    const guardado = parseFloat(guardadoCajaFuerte) || 0;
+    if (error) { toast.error("Error: " + error.message); }
+    else { toast.success("Venta guardada"); await cargarDatos(); }
+    setLoadingAction(false);
+  };
+
+  const handleAgregarGasto = async () => {
+    const monto = parseFloat(gastoForm.monto);
+    if (!gastoForm.concepto || !monto) return;
+    setLoadingAction(true);
+    const { error } = await supabase.from("gastos").insert({
+      concepto: gastoForm.concepto,
+      monto: Number(monto),
+      categoria: gastoForm.categoria,
+      metodo_pago: "efectivo",
+      registrado_por: isUUID(user?.id) ? user?.id : null
+    });
+    if (error) toast.error(error.message);
+    else { toast.success("Gasto registrado"); setGastoForm({ concepto: "", monto: "", categoria: "otro" }); setModalGasto(false); await cargarDatos(); }
+    setLoadingAction(false);
+  };
+
+  const exportarImagen = async () => {
+    const el = document.getElementById("cierre-reporte");
+    if (!el) return;
+    setLoadingAction(true);
+    const canvas = await html2canvas(el, { scale: 2 });
+    const link = document.createElement("a");
+    link.download = `cierre_${new Date().toISOString().slice(0, 10)}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    setLoadingAction(false);
+    toast.success("Imagen descargada");
+  };
+
+  // Cálculos
+  const totalVentasEfe = ventas.reduce((s, v) => s + v.monto_efectivo, 0);
+  const totalGastosEfe = gastos.reduce((s, g) => s + g.monto, 0);
+  const totalRetiros = parseFloat(retiroGuardado) || 0;
+  
+  const cajaEsperado = saldoAnt.caja + totalVentasEfe - totalGastosEfe - totalRetiros;
+  const guardadoEsperado = saldoAnt.guardado + totalRetiros;
+  
+  const handleCerrarDia = async () => {
+    if (!contadoReal) return;
+    setLoadingAction(true);
     const hoy = new Date().toISOString().slice(0, 10);
-
-    const totalEfe = resumen.find(r => r.metodo_pago === "efectivo")?.total ?? 0;
-    const totalNequi = resumen.find(r => r.metodo_pago === "nequi")?.total ?? 0;
-    const totalTransf = resumen.find(r => r.metodo_pago === "transferencia")?.total ?? 0;
-    const totalDatafono = resumen.find(r => r.metodo_pago === "datafono")?.total ?? 0;
-    const cantVentas = resumen.reduce((s, r) => s + r.cantidad, 0);
-
-    const saldoFinal = saldoIni + totalEfe - totalGastos - guardado;
-
-    setLoadingCerrar(true);
-
-    // Upsert caja_diaria para hoy
+    
     const { error } = await supabase.from("caja_diaria").upsert({
       ...(cajaHoy ? { id: cajaHoy.id } : {}),
       fecha: hoy,
-      saldo_inicial: saldoIni,
-      total_efectivo: totalEfe,
-      total_nequi: totalNequi,
-      total_transferencias: totalTransf,
-      total_datafono: totalDatafono,
-      total_descuentos: 0,
-      total_devoluciones: 0,
-      total_gastos: totalGastos,
-      guardado_caja_fuerte: guardado,
-      saldo_final: saldoFinal,
-      cantidad_ventas: cantVentas,
+      saldo_inicial: saldoAnt.caja,
+      total_efectivo: totalVentasEfe,
+      total_transferencias: ventas.reduce((s,v) => s + v.monto_transferencia, 0),
+      total_gastos: totalGastosEfe,
+      guardado_caja_fuerte: guardadoEsperado, // Saldo final en guardado
+      saldo_final: parseFloat(contadoReal), // Lo que realmente se contó queda como saldo para mañana
+      cantidad_ventas: ventas.length,
       estado: "cerrada",
     });
 
-    if (error) { toast.error("Error: " + error.message); setLoadingCerrar(false); return; }
-    toast.success("¡Caja cerrada!");
-    setModalCerrar(false);
-    await cargarDatos();
-    setLoadingCerrar(false);
-  }
+    if (error) toast.error("Error al cerrar: " + error.message);
+    else { toast.success("¡Cierre de día exitoso!"); await cargarDatos(); }
+    setLoadingAction(false);
+  };
+
+  const diferencia = (parseFloat(contadoReal) || 0) - cajaEsperado;
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <LayoutDashboard className="w-6 h-6 text-brand-blue" />
-          <h1 className="text-xl font-bold text-gray-900">Caja del día</h1>
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      {/* Header Interactivo */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 bg-brand-blue/10 rounded-xl flex items-center justify-center">
+              <LayoutDashboard className="w-6 h-6 text-brand-blue" />
+            </div>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Registro de Caja</h1>
+          </div>
+          <p className="text-gray-400 font-medium ml-13 flex items-center gap-2">
+            Hoy: {formatDate(new Date().toISOString())}
+            <RefreshCcw className="w-3 h-3 cursor-pointer hover:rotate-180 transition-transform" onClick={cargarDatos} />
+          </p>
         </div>
-        <p className="text-sm text-gray-500">{formatDate(new Date().toISOString())}</p>
+        
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setModalGasto(true)}>
+            <Plus className="w-4 h-4" /> Gasto
+          </Button>
+          <Button onClick={exportarImagen} disabled={loadingAction}>
+            <Download className="w-4 h-4" /> Reporte
+          </Button>
+        </div>
       </div>
 
       {loading ? (
-        <Spinner className="py-16" />
+        <div className="flex justify-center py-20"><Spinner /></div>
       ) : (
-        <>
-          {/* Resumen por método de pago */}
-          <div className="card mb-4">
-            <h3 className="font-bold text-gray-700 mb-3">Ventas del día</h3>
-            {resumen.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-3">Sin ventas hoy</p>
-            ) : (
-              <div className="space-y-2">
-                {resumen.map(r => (
-                  <div key={r.metodo_pago} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-                    <div>
-                      <span className="font-semibold text-gray-800">{LABELS_METODO_PAGO[r.metodo_pago] ?? r.metodo_pago}</span>
-                      <span className="text-xs text-gray-400 ml-2">({r.cantidad} ventas)</span>
-                    </div>
-                    <span className="font-bold text-gray-900">{formatCurrency(r.total)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between items-center pt-2 border-t-2 border-gray-200">
-                  <span className="font-bold text-gray-800">Total ventas</span>
-                  <span className="font-bold text-xl text-brand-blue">{formatCurrency(totalVentas)}</span>
-                </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Columna Izquierda: Tabla Excel */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                  Ventas en Tiempo Real
+                </h3>
               </div>
-            )}
-          </div>
-
-          {/* Gastos */}
-          <div className="card mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-gray-700">Gastos del día</h3>
-              <button
-                onClick={() => setModalGasto(true)}
-                className="flex items-center gap-1 text-red-600 text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" /> Agregar
-              </button>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">
+                      <th className="p-4 w-16 text-center">Cant</th>
+                      <th className="p-4">Producto / Referencia</th>
+                      <th className="p-4 w-24">Talla</th>
+                      <th className="p-4 w-32 text-right">Total</th>
+                      <th className="p-4 w-32 text-right">Transf</th>
+                      <th className="p-4 w-32 text-right">Efectivo</th>
+                      <th className="p-4 w-16"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <ExcelRow 
+                      productos={productos} 
+                      tallas={tallas} 
+                      onSave={handleSaveVenta} 
+                      loading={loadingAction}
+                    />
+                    {ventas.map((v, i) => (
+                      <tr key={v.id || i} className="border-b border-gray-50 text-sm">
+                        <td className="p-4 text-center font-bold text-gray-900">{v.cantidad}</td>
+                        <td className="p-4">
+                          <p className="font-semibold text-gray-800">{v.referencia}</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase">{v.metodo_pago}</p>
+                        </td>
+                        <td className="p-4 text-center text-gray-500">{v.talla}</td>
+                        <td className="p-4 text-right font-black text-gray-900">{formatCurrency(v.total)}</td>
+                        <td className="p-4 text-right text-blue-500 font-medium">{formatCurrency(v.monto_transferencia)}</td>
+                        <td className="p-4 text-right text-green-600 font-medium">{formatCurrency(v.monto_efectivo)}</td>
+                        <td className="p-4 text-center">
+                          <CheckCircle2 className="w-4 h-4 text-green-400 mx-auto" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            {gastos.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-3">Sin gastos hoy</p>
-            ) : (
-              <div className="space-y-2">
+
+            {/* Otros Movimientos y Gastos */}
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+              <h3 className="font-bold text-gray-800 mb-4">Otros Movimientos y Gastos</h3>
+              <div className="space-y-3">
+                {gastos.length === 0 && <p className="text-sm text-gray-400 italic">No hay gastos hoy.</p>}
                 {gastos.map(g => (
-                  <div key={g.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
+                  <div key={g.id} className="flex justify-between items-center p-3 rounded-2xl bg-red-50/50 border border-red-100">
                     <div>
-                      <p className="font-semibold text-sm text-gray-800">{g.concepto}</p>
-                      <p className="text-xs text-gray-400">{g.categoria} · {g.metodo_pago}</p>
+                      <p className="font-bold text-gray-900 text-sm">{g.concepto}</p>
+                      <p className="text-[10px] font-black text-red-400 uppercase tracking-tighter">{g.categoria}</p>
                     </div>
-                    <span className="font-bold text-red-600">{formatCurrency(g.monto)}</span>
+                    <span className="font-black text-red-600">{formatCurrency(g.monto)}</span>
                   </div>
                 ))}
-                <div className="flex justify-between pt-2 border-t border-gray-100">
-                  <span className="font-bold text-gray-700">Total gastos</span>
-                  <span className="font-bold text-red-600">{formatCurrency(totalGastos)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Columna Derecha: Liquidación */}
+          <div className="space-y-6">
+            <div className="bg-gray-900 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                    <Wallet className="w-20 h-20" />
+                </div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-white/50 mb-6 flex items-center gap-2">
+                <RefreshCcw className="w-4 h-4" /> Liquidación Diaria
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white/60 font-medium">Saldo Inicial Caja</span>
+                  <span className="font-bold">{formatCurrency(saldoAnt.caja)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                   <span className="text-white/60 font-medium">Retiro p/ Guardar</span>
+                   <input 
+                    type="number" 
+                    value={retiroGuardado} 
+                    onChange={e => setRetiroGuardado(e.target.value)}
+                    placeholder="0"
+                    className="w-24 bg-white/10 border-none rounded-lg p-1 text-right text-sm focus:ring-1 focus:ring-brand-blue" 
+                   />
+                </div>
+                
+                <div className="pt-4 border-t border-white/10 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-brand-blue text-xs font-black uppercase">Debería haber</span>
+                    <span className="text-2xl font-black">{formatCurrency(cajaEsperado)}</span>
+                  </div>
+                  
+                  <div className="pt-2">
+                    <label className="text-[10px] font-black text-white/40 uppercase mb-1 block tracking-wider">Contado en efectivo</label>
+                    <input 
+                      type="number" 
+                      value={contadoReal} 
+                      onChange={e => setContadoReal(e.target.value)}
+                      placeholder="Ingrese monto..."
+                      className="w-full bg-white text-gray-900 font-black text-xl rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                    />
+                  </div>
+                  
+                  {contadoReal && (
+                    <div className={`flex justify-between items-center pt-2 ${diferencia === 0 ? "text-green-400" : (diferencia > 0 ? "text-yellow-400" : "text-red-400")}`}>
+                      <span className="text-xs font-black uppercase italic">Diferencia</span>
+                      <span className="font-black text-lg">{diferencia > 0 ? "+" : ""}{formatCurrency(diferencia)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Efectivo en caja */}
-          <div className="bg-brand-blue rounded-2xl p-5 mb-4 text-white">
-            <h3 className="font-semibold mb-3 opacity-80">Efectivo en caja</h3>
-            <div className="flex justify-between text-sm opacity-80 mb-1">
-              <span>Efectivo vendido hoy</span>
-              <span>{formatCurrency(efectivoHoy)}</span>
             </div>
-            <div className="flex justify-between text-sm opacity-80 mb-2">
-              <span>Gastos en efectivo</span>
-              <span>- {formatCurrency(gastos.filter(g => g.metodo_pago === "efectivo").reduce((s, g) => s + g.monto, 0))}</span>
-            </div>
-            <div className="flex justify-between text-xl font-bold border-t border-white/30 pt-2">
-              <span>Disponible</span>
-              <span>{formatCurrency(efectivoHoy - gastos.filter(g => g.metodo_pago === "efectivo").reduce((s, g) => s + g.monto, 0))}</span>
-            </div>
-          </div>
 
-          {/* Botón cerrar caja */}
-          <Button variant="danger" className="w-full mb-4" size="lg" onClick={() => setModalCerrar(true)}>
-            <Lock className="w-5 h-5" /> Cerrar Caja del Día
-          </Button>
-
-          {/* Historial */}
-          <button
-            onClick={() => setMostrarHistorial(!mostrarHistorial)}
-            className="flex items-center justify-between w-full card mb-3"
-          >
-            <span className="font-bold text-gray-700">Historial de cierres</span>
-            {mostrarHistorial ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-          </button>
-
-          {mostrarHistorial && (
-            <div className="space-y-2 mb-6">
-              {historial.filter(c => c.estado === "cerrada").map(c => (
-                <div key={c.id} className="card">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-bold text-gray-900">{formatDate(c.fecha)}</p>
-                      <p className="text-xs text-gray-400">{c.cantidad_ventas} ventas</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-brand-blue">{formatCurrency(c.saldo_final)}</p>
-                      <Badge variant="success">cerrada</Badge>
-                    </div>
-                  </div>
+            {/* Card Guardado */}
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm relative overflow-hidden">
+                <div className="absolute -bottom-4 -right-4 opacity-5">
+                    <Shield className="w-24 h-24" />
                 </div>
-              ))}
+              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                 <Shield className="w-4 h-4" /> Acumulado Guardado
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                    <span className="text-gray-500 font-medium">Saldo Anterior</span>
+                    <span className="font-bold text-gray-800">{formatCurrency(saldoAnt.guardado)}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-gray-500 font-medium">Entrada de hoy</span>
+                    <span className="font-bold text-brand-blue">+ {formatCurrency(totalRetiros)}</span>
+                </div>
+                <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
+                    <span className="text-[10px] font-black text-gray-400 uppercase">Total Final</span>
+                    <span className="text-xl font-black text-gray-900">{formatCurrency(guardadoEsperado)}</span>
+                </div>
+              </div>
             </div>
-          )}
-        </>
+            
+            <Button variant="danger" className="w-full py-6 rounded-3xl shadow-lg shadow-red-500/20" disabled={loadingAction || !contadoReal} onClick={handleCerrarDia}>
+                <Lock className="w-5 h-5" /> Cerrar Día Definitivamente
+            </Button>
+          </div>
+        </div>
       )}
 
-      {/* Modal gasto */}
-      <Modal open={modalGasto} onClose={() => setModalGasto(false)} title="Nuevo Gasto">
-        <div className="space-y-4">
-          <div>
-            <label className="label">Concepto</label>
-            <input type="text" value={gastoConcepto} onChange={e => setGastoConcepto(e.target.value)} className="input" placeholder="Descripción del gasto..." />
-          </div>
-          <div>
-            <label className="label">Monto</label>
-            <input type="number" value={gastoMonto} onChange={e => setGastoMonto(e.target.value)} className="input" placeholder="0" />
-          </div>
-          <div>
-            <label className="label">Categoría</label>
-            <div className="grid grid-cols-2 gap-2">
-              {CATEGORIAS_GASTO.map(c => (
-                <button key={c.value} onClick={() => setGastoCategoria(c.value)} className={`py-2 rounded-xl text-sm font-medium ${gastoCategoria === c.value ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>{c.label}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="label">Método de pago</label>
-            <div className="grid grid-cols-3 gap-2">
-              {METODOS.map(m => (
-                <button key={m.value} onClick={() => setGastoMetodo(m.value)} className={`py-2 rounded-xl text-sm font-medium ${gastoMetodo === m.value ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>{m.label}</button>
-              ))}
-            </div>
-          </div>
-          <Button className="w-full" onClick={agregarGasto} loading={loadingGasto}>Guardar Gasto</Button>
-        </div>
-      </Modal>
+      {/* Reporte oculto para html2canvas */}
+      <div className="fixed -left-[2000px] top-0 pointer-events-none">
+        <CierreResumen 
+          fecha={new Date().toISOString()}
+          ventas={ventas}
+          gastos={gastos}
+          otrosIngresos={[]}
+          caja={{
+            inicial: saldoAnt.caja,
+            ventasEfe: totalVentasEfe,
+            gastos: totalGastosEfe,
+            retiros: totalRetiros,
+            otros: 0,
+            esperado: cajaEsperado,
+            contado: parseFloat(contadoReal) || 0,
+            diferencia: diferencia
+          }}
+          guardado={{
+            inicial: saldoAnt.guardado,
+            entradas: totalRetiros,
+            esperado: guardadoEsperado
+          }}
+        />
+      </div>
 
-      {/* Modal cerrar caja */}
-      <Modal open={modalCerrar} onClose={() => setModalCerrar(false)} title="Cerrar Caja">
-        <div className="space-y-4">
-          <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-600">Total ventas hoy</span><span className="font-bold">{formatCurrency(totalVentas)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-600">Total gastos</span><span className="font-bold text-red-600">{formatCurrency(totalGastos)}</span></div>
-          </div>
-          <div>
-            <label className="label">Saldo inicial (efectivo apertura)</label>
-            <input type="number" value={saldoInicial} onChange={e => setSaldoInicial(e.target.value)} className="input" placeholder="0" />
-          </div>
-          <div>
-            <label className="label">Guardado en caja fuerte</label>
-            <input type="number" value={guardadoCajaFuerte} onChange={e => setGuardadoCajaFuerte(e.target.value)} className="input" placeholder="0" />
-          </div>
-          {(parseFloat(saldoInicial) || 0) >= 0 && (
-            <div className="bg-brand-blue text-white rounded-xl p-4">
-              <div className="flex justify-between text-lg font-bold">
-                <span>Saldo final en caja</span>
-                <span>{formatCurrency(
-                  (parseFloat(saldoInicial) || 0) + efectivoHoy
-                  - gastos.filter(g => g.metodo_pago === "efectivo").reduce((s, g) => s + g.monto, 0)
-                  - (parseFloat(guardadoCajaFuerte) || 0)
-                )}</span>
+      {/* Modal Gastos */}
+      <Modal open={modalGasto} onClose={() => setModalGasto(false)} title="Nuevo Gasto / Movimiento">
+          <div className="space-y-4">
+              <div>
+                  <label className="label">Concepto</label>
+                  <input 
+                    type="text" 
+                    value={gastoForm.concepto} 
+                    onChange={e => setGastoForm({...gastoForm, concepto: e.target.value})} 
+                    className="input" 
+                    placeholder="Almuerzo, servicios, etc..." 
+                  />
               </div>
-            </div>
-          )}
-          <Button variant="danger" className="w-full" onClick={cerrarCaja} loading={loadingCerrar}>
-            <Lock className="w-5 h-5" /> Confirmar Cierre
-          </Button>
-        </div>
+              <div>
+                  <label className="label">Monto</label>
+                  <input 
+                    type="number" 
+                    value={gastoForm.monto} 
+                    onChange={e => setGastoForm({...gastoForm, monto: e.target.value})} 
+                    className="input" 
+                    placeholder="0" 
+                  />
+              </div>
+              <div>
+                  <label className="label">Categoría</label>
+                  <div className="grid grid-cols-2 gap-2">
+                      {CATEGORIAS_GASTO.map(c => (
+                          <button 
+                            key={c.value} 
+                            onClick={() => setGastoForm({...gastoForm, categoria: c.value})} 
+                            className={`py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${gastoForm.categoria === c.value ? "bg-brand-blue text-white shadow-lg shadow-brand-blue/20" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                          >
+                            {c.label}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+              <Button className="w-full mt-4" size="lg" onClick={handleAgregarGasto} loading={loadingAction}>Guardar Registro</Button>
+          </div>
       </Modal>
 
-      <div className="h-4" />
     </div>
   );
 }
