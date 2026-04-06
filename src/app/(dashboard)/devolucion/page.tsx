@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw, CheckCircle, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
 import BuscadorProducto from "@/components/BuscadorProducto";
 import SelectorTalla from "@/components/SelectorTalla";
@@ -29,7 +29,7 @@ const METODOS: { value: MetodoPago; label: string }[] = [
 
 export default function DevolucionPage() {
   const supabase = createClient();
-  const { user } = useUser();
+  const { profile } = useProfile();
   const router = useRouter();
 
   const [producto, setProducto] = useState<ProductoSel | null>(null);
@@ -75,7 +75,7 @@ export default function DevolucionPage() {
       precio_venta: devuelvedinero ? parseFloat(monto) || 0 : null,
       metodo_pago: devuelvedinero ? metodoPago : null,
       nota: nota || null,
-      usuario_id: user?.id ?? null,
+      usuario_id: null,
     });
 
     if (error) { toast.error("Error: " + error.message); setLoading(false); return; }

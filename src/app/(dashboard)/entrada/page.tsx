@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, PackagePlus, ChevronLeft, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
 import BuscadorProducto from "@/components/BuscadorProducto";
 import Button from "@/components/ui/Button";
@@ -27,7 +27,7 @@ interface FilaTalla {
 
 export default function EntradaPage() {
   const supabase = createClient();
-  const { user } = useUser();
+  const { profile } = useProfile();
   const router = useRouter();
 
   const [producto, setProducto] = useState<ProductoSeleccionado | null>(null);
@@ -95,7 +95,7 @@ export default function EntradaPage() {
       cantidad: f.cantidad,
       tipo: "entrada" as const,
       canal: "compra_proveedor" as const,
-      usuario_id: user?.id ?? null,
+      usuario_id: null,
     }));
 
     const { error } = await supabase.from("movimientos").insert(movimientos);

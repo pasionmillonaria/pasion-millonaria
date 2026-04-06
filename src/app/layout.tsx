@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ProfileProvider } from "@/lib/context/ProfileContext";
 
 export const metadata: Metadata = {
   title: "Pasión Millonaria",
@@ -14,14 +15,14 @@ export const viewport: Viewport = {
   themeColor: "#003366",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <ProfileProvider>
+          {children}
+        </ProfileProvider>
+      </body>
     </html>
   );
 }

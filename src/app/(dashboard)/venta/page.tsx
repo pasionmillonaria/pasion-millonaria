@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, ShoppingBag, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
 import BuscadorProducto from "@/components/BuscadorProducto";
 import SelectorTalla from "@/components/SelectorTalla";
@@ -47,7 +47,7 @@ const METODOS: { value: MetodoPago; label: string }[] = [
 
 export default function VentaPage() {
   const supabase = createClient();
-  const { user } = useUser();
+  const { profile } = useProfile();
   const router = useRouter();
 
   const [paso, setPaso] = useState<Paso>("producto");
@@ -123,7 +123,7 @@ export default function VentaPage() {
       precio_venta: precioNum,
       descuento: descuentoNum > 0 ? descuentoNum : null,
       metodo_pago: metodoPago,
-      usuario_id: user?.id ?? null,
+      usuario_id: null,
     });
 
     if (error) {

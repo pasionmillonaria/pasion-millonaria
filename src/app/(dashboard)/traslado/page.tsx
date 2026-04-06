@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftRight, CheckCircle, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import BuscadorProducto from "@/components/BuscadorProducto";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
@@ -20,7 +20,7 @@ interface TallaStock {
 
 export default function TrasladoPage() {
   const supabase = createClient();
-  const { user } = useUser();
+  const { profile } = useProfile();
   const router = useRouter();
 
   const [producto, setProducto] = useState<ProductoSel | null>(null);
@@ -63,11 +63,11 @@ export default function TrasladoPage() {
       {
         producto_id: producto.id, talla_id: tallaId,
         ubicacion_id: origen, ubicacion_destino_id: destino,
-        cantidad, tipo: "salida", canal: "traslado", usuario_id: user?.id ?? null,
+        cantidad, tipo: "salida", canal: "traslado", usuario_id: null,
       },
       {
         producto_id: producto.id, talla_id: tallaId,
-        ubicacion_id: destino, cantidad, tipo: "entrada", canal: "traslado", usuario_id: user?.id ?? null,
+        ubicacion_id: destino, cantidad, tipo: "entrada", canal: "traslado", usuario_id: null,
       },
     ]);
 

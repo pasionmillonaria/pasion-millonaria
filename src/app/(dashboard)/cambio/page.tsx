@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftRight, CheckCircle, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
 import BuscadorProducto from "@/components/BuscadorProducto";
 import SelectorTalla from "@/components/SelectorTalla";
@@ -42,7 +42,7 @@ async function cargarTallas(supabase: any, productoId: number): Promise<TallaSto
 
 export default function CambioPage() {
   const supabase = createClient();
-  const { user } = useUser();
+  const { profile } = useProfile();
   const router = useRouter();
 
   // Producto que devuelve el cliente
@@ -78,14 +78,14 @@ export default function CambioPage() {
         producto_id: prodEntrada.id, talla_id: tallaEntradaId,
         ubicacion_id: 1, cantidad: 1, tipo: "devolucion", canal: "cambio",
         precio_venta: parseFloat(precioEntrada) || null,
-        movimiento_ref: ref, usuario_id: user?.id ?? null,
+        movimiento_ref: ref, usuario_id: null,
       },
       {
         producto_id: prodSalida.id, talla_id: tallaSalidaId,
         ubicacion_id: ubicacionSalidaId, cantidad: 1, tipo: "salida", canal: "cambio",
         precio_venta: parseFloat(precioSalida) || null,
         metodo_pago: diferencia !== 0 ? metodoPago : null,
-        movimiento_ref: ref, usuario_id: user?.id ?? null,
+        movimiento_ref: ref, usuario_id: null,
       },
     ]);
 

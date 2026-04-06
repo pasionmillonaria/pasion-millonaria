@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Package, Plus, Search, ChevronRight, ToggleLeft, ToggleRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import type { Producto, Categoria, Linea } from "@/lib/types";
 import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
@@ -18,7 +18,7 @@ interface ProductoConInfo extends Producto {
 
 export default function ProductosPage() {
   const supabase = createClient();
-  const { isAdmin } = useUser();
+  const { isAdmin } = useProfile();
   const router = useRouter();
 
   const [productos, setProductos] = useState<ProductoConInfo[]>([]);

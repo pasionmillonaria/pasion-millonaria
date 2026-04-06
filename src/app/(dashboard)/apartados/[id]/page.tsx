@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Plus, CheckCircle, XCircle, Phone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import type { Abono, MetodoPago } from "@/lib/types";
 import Button from "@/components/ui/Button";
@@ -31,7 +31,7 @@ const METODOS: { value: MetodoPago; label: string }[] = [
 export default function ApartadoDetallePage() {
   const { id } = useParams<{ id: string }>();
   const supabase = createClient();
-  const { user } = useUser();
+  const { profile } = useProfile();
   const router = useRouter();
 
   const [apartado, setApartado] = useState<ApartadoDetalle | null>(null);
@@ -65,7 +65,7 @@ export default function ApartadoDetallePage() {
       apartado_id: Number(id),
       monto,
       metodo_pago: metodoPagoAbono,
-      registrado_por: user?.id ?? null,
+      registrado_por: null,
     });
 
     if (error) { toast.error("Error: " + error.message); setLoadingAbono(false); return; }

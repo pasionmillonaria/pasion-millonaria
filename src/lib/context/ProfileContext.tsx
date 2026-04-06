@@ -1,0 +1,50 @@
+"use client";
+
+import { createContext, useContext, useState } from "react";
+
+export type Rol = "admin" | "empleado";
+
+export interface Profile {
+  key: string;        // "admin" | "emp1" | "emp2" | "emp3"
+  nombre: string;
+  rol: Rol;
+  color: string;      // color de fondo del avatar
+  emoji: string;
+}
+
+export const PERFILES: Profile[] = [
+  { key: "admin",  nombre: "Admin",      rol: "admin",    color: "#003366", emoji: "👑" },
+  { key: "emp1",   nombre: "Empleado 1", rol: "empleado", color: "#7C3AED", emoji: "🧑" },
+  { key: "emp2",   nombre: "Empleado 2", rol: "empleado", color: "#059669", emoji: "🧑" },
+  { key: "emp3",   nombre: "Empleado 3", rol: "empleado", color: "#DC2626", emoji: "🧑" },
+];
+
+interface ProfileContextType {
+  profile: Profile | null;
+  setProfile: (p: Profile | null) => void;
+  isAdmin: boolean;
+}
+
+const ProfileContext = createContext<ProfileContextType>({
+  profile: null,
+  setProfile: () => {},
+  isAdmin: false,
+});
+
+export function ProfileProvider({ children }: { children: React.ReactNode }) {
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  return (
+    <ProfileContext.Provider value={{
+      profile,
+      setProfile,
+      isAdmin: profile?.rol === "admin",
+    }}>
+      {children}
+    </ProfileContext.Provider>
+  );
+}
+
+export function useProfile() {
+  return useContext(ProfileContext);
+}

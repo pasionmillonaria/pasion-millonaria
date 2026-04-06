@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bookmark, CheckCircle, ChevronLeft, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/context/UserContext";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
 import BuscadorProducto from "@/components/BuscadorProducto";
 import SelectorTalla from "@/components/SelectorTalla";
@@ -29,7 +29,7 @@ const METODOS: { value: MetodoPago; label: string }[] = [
 
 export default function NuevoApartadoPage() {
   const supabase = createClient();
-  const { user } = useUser();
+  const { profile } = useProfile();
   const router = useRouter();
 
   const [clienteNombre, setClienteNombre] = useState("");
@@ -125,7 +125,7 @@ export default function NuevoApartadoPage() {
         apartado_id: apartado.id,
         monto: abonoNum,
         metodo_pago: metodoPago,
-        registrado_por: user?.id ?? null,
+        registrado_por: null,
       });
     }
 
