@@ -165,7 +165,6 @@ export default function HistorialDetallePage() {
               <p className="text-xs text-gray-500">Comisiones</p>
             </div>
             <p className="text-2xl font-black text-violet-600">{formatCurrency(comisiones)}</p>
-            <p className="text-xs text-gray-400 mt-1">$1.000 × unidad &gt;$25.000</p>
           </div>
         )}
         {totalCajaFuerte > 0 && (
