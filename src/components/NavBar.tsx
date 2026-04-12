@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Home, Package, Bookmark, LayoutDashboard,
-  Box, LogOut, ChevronRight,
+  Box, LogOut, ChevronRight, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -17,6 +17,7 @@ const navBase = [
 const navAdmin = [
   { href: "/caja",      label: "Caja",      icon: LayoutDashboard },
   { href: "/productos", label: "Productos", icon: Box },
+  { href: "/reportes",  label: "Reportes",  icon: BarChart2 },
 ];
 
 export default function NavBar() {

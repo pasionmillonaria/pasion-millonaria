@@ -16,7 +16,7 @@ import toast from "react-hot-toast";
 interface ApartadoDetalle {
   id: number; fecha: string; estado: string;
   precio: number; total_abonado: number; saldo: number;
-  en_tienda: boolean; observacion: string | null;
+  en_tienda?: boolean; observacion?: string | null;
   cliente_nombre: string; cliente_telefono: string | null;
   referencia: string; talla: string;
 }

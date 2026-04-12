@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   LayoutDashboard, Plus, Lock, Trash2, Download, AlertCircle,
   ShoppingBag, TrendingDown, TrendingUp, Shield, History,
-  CheckCircle, Calendar, FileText, X,
+  CheckCircle, Calendar, FileText, X, WifiOff, RefreshCw,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -15,14 +16,15 @@ import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 import toast from "react-hot-toast";
-import type { MetodoPago, TipoRegistroCaja } from "@/lib/types";
+import type { MetodoPago, TipoRegistroCaja, VResumenCaja } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────
-// LOCAL TYPES
+// TYPES
 // ─────────────────────────────────────────────────────────────
 interface RegistroLocal {
   id: string;
-  dbId?: string;
+  dbId?: number;
+  movimientoId?: number;
   fecha: string;
   hora: string;
   tipo: TipoRegistroCaja;
@@ -46,21 +48,11 @@ interface TallaStock {
   stock_bodega: number;
 }
 
-interface CajaDiariaResumen {
-  id: number;
-  fecha: string;
-  saldo_inicial: number;
-  saldo_final: number;
-  total_efectivo: number;
-  total_transferencias: number;
-  total_gastos: number;
-  total_ingresos_extra: number;
-  guardado_caja_fuerte: number;
-  cantidad_ventas: number;
-  efectivo_contado: number | null;
-  diferencia_caja: number | null;
-  estado: "abierta" | "cerrada";
+interface PendingQueueItem extends Omit<RegistroLocal, "id"> {
+  localId: string;
 }
+
+const LS_KEY = "caja_pending_v2";
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -71,26 +63,29 @@ function genId() {
 
 function getNow() {
   const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
   return {
-    fecha: now.toISOString().slice(0, 10),
+    fecha: `${year}-${month}-${day}`,
     hora: now.toTimeString().slice(0, 8),
   };
 }
 
-const TIPO_LABEL: Record<TipoRegistroCaja, string> = {
-  venta: "VENTA",
-  gasto: "GASTO",
-  ingreso: "INGRESO",
-  caja_fuerte: "CAJA FUERTE",
-};
+function getHoy() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
 
+const TIPO_LABEL: Record<TipoRegistroCaja, string> = {
+  venta: "VENTA", gasto: "GASTO", ingreso: "INGRESO", caja_fuerte: "GUARDADO",
+};
 const TIPO_ROW: Record<TipoRegistroCaja, string> = {
   venta: "bg-green-50 border-l-4 border-l-green-400",
   gasto: "bg-red-50 border-l-4 border-l-red-300",
   ingreso: "bg-blue-50 border-l-4 border-l-blue-400",
   caja_fuerte: "bg-yellow-50 border-l-4 border-l-yellow-400",
 };
-
 const TIPO_BADGE: Record<TipoRegistroCaja, string> = {
   venta: "bg-green-100 text-green-700",
   gasto: "bg-red-100 text-red-700",
@@ -98,15 +93,23 @@ const TIPO_BADGE: Record<TipoRegistroCaja, string> = {
   caja_fuerte: "bg-yellow-100 text-yellow-800",
 };
 
-const LS_KEY = "caja_pending_v1";
+function getTipoLabel(tipo: TipoRegistroCaja, valor: number) {
+  if (tipo === "caja_fuerte") return valor < 0 ? "RETIRO" : "GUARDADO";
+  return TIPO_LABEL[tipo];
+}
+function getTipoRow(tipo: TipoRegistroCaja, valor: number) {
+  if (tipo === "caja_fuerte" && valor < 0) return "bg-orange-50 border-l-4 border-l-orange-400";
+  return TIPO_ROW[tipo];
+}
+function getTipoBadge(tipo: TipoRegistroCaja, valor: number) {
+  if (tipo === "caja_fuerte" && valor < 0) return "bg-orange-100 text-orange-700";
+  return TIPO_BADGE[tipo];
+}
 
 // ─────────────────────────────────────────────────────────────
 // MODAL VENTA
 // ─────────────────────────────────────────────────────────────
-function ModalVenta({
-  onClose,
-  onSave,
-}: {
+function ModalVenta({ onClose, onSave }: {
   onClose: () => void;
   onSave: (r: Omit<RegistroLocal, "id" | "fecha" | "hora">) => void;
 }) {
@@ -127,44 +130,33 @@ function ModalVenta({
   async function handleSelectProducto(p: any) {
     setProducto(p);
     setPrecio(String(p.precio_base));
-
     const { data: stockData } = await supabase
       .from("v_stock_total")
-      .select("talla, stock_tienda, stock_bodega")
+      .select("talla, talla_id, stock_tienda, stock_bodega")
       .eq("producto_id", p.id);
-
     if (stockData?.length) {
-      const nombres = stockData.map((d: any) => d.talla);
-      const { data: tallasData } = await supabase
-        .from("tallas")
-        .select("id, nombre")
-        .in("nombre", nombres);
-
-      setTallas(
-        stockData.map((d: any) => ({
-          talla_id: tallasData?.find((t: any) => t.nombre === d.talla)?.id ?? 0,
-          talla_nombre: d.talla,
-          stock_tienda: d.stock_tienda ?? 0,
-          stock_bodega: d.stock_bodega ?? 0,
-        }))
-      );
+      setTallas(stockData.map((d: any) => ({
+        talla_id: d.talla_id,
+        talla_nombre: d.talla,
+        stock_tienda: d.stock_tienda ?? 0,
+        stock_bodega: d.stock_bodega ?? 0,
+      })));
     }
     setPaso("talla");
   }
 
   function handleSelectTalla(id: number) {
     setTallaId(id);
-    setTallaNombre(tallas.find((t) => t.talla_id === id)?.talla_nombre ?? "");
+    setTallaNombre(tallas.find(t => t.talla_id === id)?.talla_nombre ?? "");
     setPaso("detalle");
   }
 
   useEffect(() => {
     if (metodo === "efectivo") { setMontoEfe(total); setMontoTransf(0); }
     else if (metodo === "transferencia") { setMontoTransf(total); setMontoEfe(0); }
-    // mixto: don't reset, let user fill
   }, [metodo, total]);
 
-  const mixtoValido = metodo !== "mixto" || montoEfe + montoTransf === total;
+  const mixtoValido = metodo !== "mixto" || Math.abs(montoEfe + montoTransf - total) < 1;
 
   function handleSave() {
     if (!producto || !tallaId || total <= 0) return;
@@ -174,10 +166,7 @@ function ModalVenta({
       descripcion: producto.referencia,
       productoId: producto.id,
       productoRef: producto.referencia,
-      tallaId,
-      tallaNombre,
-      cantidad,
-      valor: total,
+      tallaId, tallaNombre, cantidad, valor: total,
       metodoPago: metodo,
       montoEfectivo: metodo === "efectivo" ? total : metodo === "mixto" ? montoEfe : 0,
       montoTransferencia: metodo === "transferencia" ? total : metodo === "mixto" ? montoTransf : 0,
@@ -188,7 +177,6 @@ function ModalVenta({
   return (
     <Modal open onClose={onClose} title="Registrar Venta" size="md">
       <div className="space-y-4">
-        {/* Producto */}
         <div>
           <label className="label">Producto</label>
           {producto ? (
@@ -197,19 +185,14 @@ function ModalVenta({
                 <p className="font-bold text-gray-900">{producto.referencia}</p>
                 <p className="text-xs text-gray-500">{producto.codigo}</p>
               </div>
-              <button
-                onClick={() => { setProducto(null); setTallaId(null); setTallas([]); setPaso("producto"); }}
-                className="text-xs text-brand-blue font-medium"
-              >
-                Cambiar
-              </button>
+              <button onClick={() => { setProducto(null); setTallaId(null); setTallas([]); setPaso("producto"); }}
+                className="text-xs text-brand-blue font-medium">Cambiar</button>
             </div>
           ) : (
             <BuscadorProducto onSelect={handleSelectProducto} />
           )}
         </div>
 
-        {/* Talla */}
         {paso !== "producto" && tallas.length > 0 && (
           <div>
             <label className="label">Talla</label>
@@ -217,7 +200,6 @@ function ModalVenta({
           </div>
         )}
 
-        {/* Detalle */}
         {paso === "detalle" && tallaId && (
           <>
             <div>
@@ -230,17 +212,14 @@ function ModalVenta({
                   className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center">+</button>
               </div>
             </div>
-
             <div>
               <label className="label">Precio unitario</label>
-              <input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)}
-                className="input" placeholder="0" />
+              <input type="number" value={precio} onChange={e => setPrecio(e.target.value)} className="input" placeholder="0" />
             </div>
-
             <div>
               <label className="label">Método de pago</label>
               <div className="grid grid-cols-3 gap-2">
-                {(["efectivo", "transferencia", "mixto"] as const).map((m) => (
+                {(["efectivo", "transferencia", "mixto"] as const).map(m => (
                   <button key={m} onClick={() => setMetodo(m)}
                     className={`py-2 px-3 rounded-xl text-sm font-medium capitalize transition-colors ${metodo === m ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>
                     {m === "efectivo" ? "Efectivo" : m === "transferencia" ? "Transferencia" : "Mixto"}
@@ -248,20 +227,19 @@ function ModalVenta({
                 ))}
               </div>
             </div>
-
             {metodo === "mixto" && (
               <div className="bg-gray-50 rounded-xl p-3 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="label text-green-700">Efectivo</label>
                     <input type="number" value={montoEfe}
-                      onChange={(e) => { const v = parseFloat(e.target.value) || 0; setMontoEfe(v); setMontoTransf(total - v); }}
+                      onChange={e => { const v = parseFloat(e.target.value) || 0; setMontoEfe(v); setMontoTransf(total - v); }}
                       className="input font-bold text-green-700" />
                   </div>
                   <div>
                     <label className="label text-blue-700">Transferencia</label>
                     <input type="number" value={montoTransf}
-                      onChange={(e) => { const v = parseFloat(e.target.value) || 0; setMontoTransf(v); setMontoEfe(total - v); }}
+                      onChange={e => { const v = parseFloat(e.target.value) || 0; setMontoTransf(v); setMontoEfe(total - v); }}
                       className="input font-bold text-blue-700" />
                   </div>
                 </div>
@@ -272,12 +250,10 @@ function ModalVenta({
                 )}
               </div>
             )}
-
             <div className="bg-brand-blue text-white rounded-xl p-4 flex justify-between items-center">
               <span className="font-bold">Total</span>
               <span className="text-2xl font-black">{formatCurrency(total)}</span>
             </div>
-
             <Button className="w-full" onClick={handleSave} disabled={!mixtoValido || total <= 0}>
               Guardar Venta
             </Button>
@@ -291,10 +267,7 @@ function ModalVenta({
 // ─────────────────────────────────────────────────────────────
 // MODAL GASTO
 // ─────────────────────────────────────────────────────────────
-function ModalGasto({
-  onClose,
-  onSave,
-}: {
+function ModalGasto({ onClose, onSave }: {
   onClose: () => void;
   onSave: (r: Omit<RegistroLocal, "id" | "fecha" | "hora">) => void;
 }) {
@@ -306,8 +279,7 @@ function ModalGasto({
     const v = parseFloat(valor);
     if (!descripcion.trim() || !v) { toast.error("Completa todos los campos"); return; }
     onSave({
-      tipo: "gasto",
-      descripcion: descripcion.trim(),
+      tipo: "gasto", descripcion: descripcion.trim(),
       productoId: null, productoRef: null, tallaId: null, tallaNombre: null,
       cantidad: 1, valor: v, metodoPago: metodo,
       montoEfectivo: metodo === "efectivo" ? v : 0,
@@ -321,18 +293,17 @@ function ModalGasto({
       <div className="space-y-4">
         <div>
           <label className="label">Descripción</label>
-          <input type="text" value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
+          <input type="text" value={descripcion} onChange={e => setDescripcion(e.target.value)}
             className="input" placeholder="Ej: Almuerzo, pago luz, bolsas..." autoFocus />
         </div>
         <div>
           <label className="label">Valor</label>
-          <input type="number" value={valor} onChange={(e) => setValor(e.target.value)}
-            className="input" placeholder="0" />
+          <input type="number" value={valor} onChange={e => setValor(e.target.value)} className="input" placeholder="0" />
         </div>
         <div>
           <label className="label">Pagado con</label>
           <div className="grid grid-cols-2 gap-2">
-            {(["efectivo", "transferencia"] as const).map((m) => (
+            {(["efectivo", "transferencia"] as const).map(m => (
               <button key={m} onClick={() => setMetodo(m)}
                 className={`py-2.5 rounded-xl text-sm font-medium ${metodo === m ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>
                 {m === "efectivo" ? "Efectivo" : "Transferencia"}
@@ -351,10 +322,7 @@ function ModalGasto({
 // ─────────────────────────────────────────────────────────────
 // MODAL INGRESO
 // ─────────────────────────────────────────────────────────────
-function ModalIngreso({
-  onClose,
-  onSave,
-}: {
+function ModalIngreso({ onClose, onSave }: {
   onClose: () => void;
   onSave: (r: Omit<RegistroLocal, "id" | "fecha" | "hora">) => void;
 }) {
@@ -366,8 +334,7 @@ function ModalIngreso({
     const v = parseFloat(valor);
     if (!descripcion.trim() || !v) { toast.error("Completa todos los campos"); return; }
     onSave({
-      tipo: "ingreso",
-      descripcion: descripcion.trim(),
+      tipo: "ingreso", descripcion: descripcion.trim(),
       productoId: null, productoRef: null, tallaId: null, tallaNombre: null,
       cantidad: 1, valor: v, metodoPago: metodo,
       montoEfectivo: metodo === "efectivo" ? v : 0,
@@ -380,22 +347,21 @@ function ModalIngreso({
     <Modal open onClose={onClose} title="Ingreso Extra">
       <div className="space-y-4">
         <p className="text-sm text-gray-500 bg-blue-50 rounded-xl p-3">
-          Dinero que entra a caja sin ser por venta: cambios que traen, préstamos, devoluciones de proveedores, etc.
+          Dinero que entra a caja sin ser venta: cambios, préstamos, devoluciones de proveedores, etc.
         </p>
         <div>
           <label className="label">Descripción</label>
-          <input type="text" value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
+          <input type="text" value={descripcion} onChange={e => setDescripcion(e.target.value)}
             className="input" placeholder="Ej: Cambio que trajeron, devolución proveedor..." autoFocus />
         </div>
         <div>
           <label className="label">Valor</label>
-          <input type="number" value={valor} onChange={(e) => setValor(e.target.value)}
-            className="input" placeholder="0" />
+          <input type="number" value={valor} onChange={e => setValor(e.target.value)} className="input" placeholder="0" />
         </div>
         <div>
           <label className="label">Forma de ingreso</label>
           <div className="grid grid-cols-2 gap-2">
-            {(["efectivo", "transferencia"] as const).map((m) => (
+            {(["efectivo", "transferencia"] as const).map(m => (
               <button key={m} onClick={() => setMetodo(m)}
                 className={`py-2.5 rounded-xl text-sm font-medium ${metodo === m ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>
                 {m === "efectivo" ? "Efectivo" : "Transferencia"}
@@ -412,46 +378,50 @@ function ModalIngreso({
 }
 
 // ─────────────────────────────────────────────────────────────
-// MODAL CAJA FUERTE
+// MODAL GUARDADO / RETIRO
 // ─────────────────────────────────────────────────────────────
-function ModalCajaFuerte({
-  onClose,
-  onSave,
-}: {
+function ModalCajaFuerte({ onClose, onSave, modo = "guardar" }: {
   onClose: () => void;
   onSave: (r: Omit<RegistroLocal, "id" | "fecha" | "hora">) => void;
+  modo?: "guardar" | "retirar";
 }) {
   const [valor, setValor] = useState("");
+  const esRetiro = modo === "retirar";
 
   function handleSave() {
     const v = parseFloat(valor);
-    if (!v) { toast.error("Ingresa el valor"); return; }
+    if (!v || v <= 0) { toast.error("Ingresa un valor válido"); return; }
+    const valorFinal = esRetiro ? -v : v;
     onSave({
       tipo: "caja_fuerte",
-      descripcion: "Guardado en caja fuerte",
+      descripcion: esRetiro ? "Retiro de guardado" : "Guardado",
       productoId: null, productoRef: null, tallaId: null, tallaNombre: null,
-      cantidad: 1, valor: v, metodoPago: "efectivo",
-      montoEfectivo: v, montoTransferencia: 0,
+      cantidad: 1, valor: valorFinal, metodoPago: "efectivo",
+      montoEfectivo: valorFinal, montoTransferencia: 0,
     });
     onClose();
   }
 
   return (
-    <Modal open onClose={onClose} title="Guardar en Caja Fuerte">
+    <Modal open onClose={onClose} title={esRetiro ? "Retirar de lo guardado" : "Guardar"}>
       <div className="space-y-4">
-        <p className="text-sm text-gray-500 bg-yellow-50 rounded-xl p-3 border border-yellow-100">
-          Registra el efectivo que se saca de la caja para guardar en lugar seguro. Esto descuenta del efectivo disponible.
+        <p className={`text-sm rounded-xl p-3 border ${esRetiro ? "text-gray-500 bg-orange-50 border-orange-100" : "text-gray-500 bg-yellow-50 border-yellow-100"}`}>
+          {esRetiro
+            ? "Registra el dinero que se retira de lo guardado y vuelve a circular."
+            : "Registra el efectivo que se saca de la caja para guardar en lugar seguro."}
         </p>
         <div>
-          <label className="label">Valor a guardar</label>
-          <input type="number" value={valor} onChange={(e) => setValor(e.target.value)}
+          <label className="label">{esRetiro ? "Valor a retirar" : "Valor a guardar"}</label>
+          <input type="number" value={valor} onChange={e => setValor(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleSave()}
             className="input text-xl font-bold" placeholder="0" autoFocus />
         </div>
         <button
           onClick={handleSave}
-          className="w-full btn-gold flex items-center justify-center gap-2"
+          className={`w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-2xl transition-colors ${esRetiro ? "bg-orange-500 hover:bg-orange-600 text-white" : "btn-gold"}`}
         >
-          <Shield className="w-5 h-5" /> Guardar en Caja Fuerte
+          <Shield className="w-5 h-5" />
+          {esRetiro ? "Confirmar retiro" : "Guardar"}
         </button>
       </div>
     </Modal>
@@ -459,7 +429,7 @@ function ModalCajaFuerte({
 }
 
 // ─────────────────────────────────────────────────────────────
-// REPORTE COMPONENT (rendered hidden, captured by html2canvas)
+// REPORTE DE CIERRE (componente oculto capturado por html2canvas)
 // ─────────────────────────────────────────────────────────────
 interface ReporteParams {
   registros: RegistroLocal[];
@@ -469,33 +439,27 @@ interface ReporteParams {
 }
 
 function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: ReporteParams) {
-  const ventas = registros.filter((r) => r.tipo === "venta");
-  const gastos = registros.filter((r) => r.tipo === "gasto");
-  const ingresos = registros.filter((r) => r.tipo === "ingreso");
-  const cajaFuerteList = registros.filter((r) => r.tipo === "caja_fuerte");
-
+  const ventas = registros.filter(r => r.tipo === "venta");
+  const gastos = registros.filter(r => r.tipo === "gasto");
+  const ingresos = registros.filter(r => r.tipo === "ingreso");
+  const cajaFuerteList = registros.filter(r => r.tipo === "caja_fuerte");
   const totalVentas = ventas.reduce((s, r) => s + r.valor, 0);
   const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
-  const totalCajaFuerte = cajaFuerteList.reduce((s, r) => s + r.valor, 0);
+  const guardadoList = cajaFuerteList.filter(r => r.valor > 0);
+  const retiroList   = cajaFuerteList.filter(r => r.valor < 0);
+  const totalGuardado  = guardadoList.reduce((s, r) => s + r.valor, 0);
+  const totalRetiros   = retiroList.reduce((s, r) => s + Math.abs(r.valor), 0);
+  const saldoGuardado  = totalGuardado - totalRetiros;
   const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
   const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
-  const gastosEfe = gastos.filter((r) => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const ingresosEfe = ingresos.filter((r) => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const debeHaber = saldoInicial + ventasEfe + ingresosEfe - gastosEfe - totalCajaFuerte;
+  const gastosEfe = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
+  const ingresosEfe = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
+  const debeHaber = saldoInicial + ventasEfe + ingresosEfe - gastosEfe - totalGuardado;
   const diferencia = efectivoContado - debeHaber;
 
-  const S = (v: number) => `font-size:${v}px`;
-
   return (
-    <div
-      id="reporte-cierre"
-      style={{
-        width: 600, padding: 40, fontFamily: "Arial, sans-serif",
-        background: "#fff", color: "#111", lineHeight: 1.4,
-      }}
-    >
-      {/* Header */}
+    <div id="reporte-cierre" style={{ width: 600, padding: 40, fontFamily: "Arial, sans-serif", background: "#fff", color: "#111", lineHeight: 1.4 }}>
       <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #e5e7eb", paddingBottom: 20, marginBottom: 24 }}>
         <div>
           <p style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>Cierre de Caja</p>
@@ -507,48 +471,53 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
         </div>
       </div>
 
-      {/* Top totals */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
-        {[
+        {([
           ["Total Ventas", totalVentas, "#f9fafb", "#111"],
           ["Transferencias", ventasTransf, "#eff6ff", "#1d4ed8"],
           ["Ventas Efectivo", ventasEfe, "#f0fdf4", "#047857"],
-        ].map(([label, val, bg, color]) => (
-          <div key={String(label)} style={{ flex: 1, background: String(bg), borderRadius: 12, padding: 14 }}>
-            <p style={{ fontSize: 10, textTransform: "uppercase", color: "#9ca3af", fontWeight: 700, margin: "0 0 4px" }}>{String(label)}</p>
-            <p style={{ fontSize: 18, fontWeight: 900, color: String(color), margin: 0 }}>{formatCurrency(Number(val))}</p>
+        ] as [string, number, string, string][]).map(([label, val, bg, color]) => (
+          <div key={label} style={{ flex: 1, background: bg, borderRadius: 12, padding: 14 }}>
+            <p style={{ fontSize: 10, textTransform: "uppercase", color: "#9ca3af", fontWeight: 700, margin: "0 0 4px" }}>{label}</p>
+            <p style={{ fontSize: 18, fontWeight: 900, color, margin: 0 }}>{formatCurrency(val)}</p>
           </div>
         ))}
       </div>
 
-      {/* Ventas */}
       {ventas.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>Ventas del día ({ventas.length})</p>
-          {ventas.map((v, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", background: "#f9fafb", borderRadius: 8, marginBottom: 3, fontSize: 12 }}>
-              <div>
-                <span style={{ fontWeight: 700 }}>{v.cantidad}× {v.productoRef}</span>
-                {v.tallaNombre && <span style={{ color: "#9ca3af", marginLeft: 8 }}>Talla: {v.tallaNombre}</span>}
-                <span style={{ color: "#9ca3af", marginLeft: 8, textTransform: "capitalize" }}>{v.metodoPago}</span>
+          <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 6 }}>Ventas del día ({ventas.length})</p>
+          {/* Cabecera tabla */}
+          <div style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 4rem", gap: 0, padding: "5px 8px", background: "#f3f4f6", borderRadius: "6px 6px 0 0", fontSize: 9, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1 }}>
+            <span style={{ textAlign: "center" }}>Cant</span>
+            <span>Producto</span>
+            <span style={{ textAlign: "center" }}>Talla</span>
+            <span style={{ textAlign: "right" }}>Valor</span>
+            <span style={{ textAlign: "center" }}>Pago</span>
+          </div>
+          {ventas.map((v, i) => {
+            const pagoBg = v.metodoPago === "efectivo" ? "#d1fae5" : v.metodoPago === "transferencia" ? "#dbeafe" : "#ede9fe";
+            const pagoColor = v.metodoPago === "efectivo" ? "#065f46" : v.metodoPago === "transferencia" ? "#1e40af" : "#5b21b6";
+            const pagoLabel = v.metodoPago === "efectivo" ? "Efe" : v.metodoPago === "transferencia" ? "Transf" : "Mixto";
+            return (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 4rem", gap: 0, padding: "6px 8px", background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6", alignItems: "center" }}>
+                <span style={{ textAlign: "center", fontWeight: 900, fontSize: 12 }}>{v.cantidad}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef}</span>
+                <span style={{ textAlign: "center", fontSize: 11, color: "#6b7280" }}>{v.tallaNombre ?? "—"}</span>
+                <span style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{formatCurrency(v.valor)}</span>
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <span style={{ background: pagoBg, color: pagoColor, fontSize: 9, fontWeight: 800, padding: "2px 5px", borderRadius: 4 }}>{pagoLabel}</span>
+                </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <span style={{ fontWeight: 800 }}>{formatCurrency(v.valor)}</span>
-                {v.metodoPago === "mixto" && (
-                  <div style={{ fontSize: 10, color: "#9ca3af" }}>
-                    E:{formatCurrency(v.montoEfectivo)} T:{formatCurrency(v.montoTransferencia)}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          <div style={{ textAlign: "right", fontSize: 12, fontWeight: 800, marginTop: 4 }}>
-            Total ventas: {formatCurrency(totalVentas)}
+            );
+          })}
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", background: "#f0fdf4", borderRadius: "0 0 6px 6px", fontSize: 12, fontWeight: 800 }}>
+            <span style={{ color: "#6b7280" }}>Total ventas</span>
+            <span style={{ color: "#059669" }}>{formatCurrency(totalVentas)}</span>
           </div>
         </div>
       )}
 
-      {/* Gastos */}
       {gastos.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>Gastos</p>
@@ -558,13 +527,9 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
               <span style={{ fontWeight: 800, color: "#dc2626" }}>- {formatCurrency(g.valor)}</span>
             </div>
           ))}
-          <div style={{ textAlign: "right", fontSize: 12, fontWeight: 800, marginTop: 4, color: "#dc2626" }}>
-            Total gastos: - {formatCurrency(totalGastos)}
-          </div>
         </div>
       )}
 
-      {/* Ingresos extra */}
       {ingresos.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>Ingresos Extra</p>
@@ -577,35 +542,37 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
         </div>
       )}
 
-      {/* Caja fuerte guardado */}
       {cajaFuerteList.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>Guardado en Caja Fuerte</p>
-          {cajaFuerteList.map((g, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", background: "#fefce8", borderRadius: 8, marginBottom: 3, fontSize: 12 }}>
-              <span style={{ fontWeight: 600 }}>{g.descripcion}</span>
-              <span style={{ fontWeight: 800, color: "#92400e" }}>- {formatCurrency(g.valor)}</span>
-            </div>
-          ))}
+          <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>Guardado / Retiros</p>
+          {cajaFuerteList.map((g, i) => {
+            const esRet = g.valor < 0;
+            return (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", background: esRet ? "#fff7ed" : "#fefce8", borderRadius: 8, marginBottom: 3, fontSize: 12 }}>
+                <span style={{ fontWeight: 600 }}>{g.descripcion}</span>
+                <span style={{ fontWeight: 800, color: esRet ? "#ea580c" : "#92400e" }}>
+                  {esRet ? `+ ${formatCurrency(Math.abs(g.valor))}` : `− ${formatCurrency(g.valor)}`}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Cuenta de caja */}
       <div style={{ borderTop: "2px solid #e5e7eb", paddingTop: 20 }}>
         <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 12 }}>Cuenta de Caja</p>
         <div style={{ display: "flex", gap: 12 }}>
-          {/* Cálculo */}
           <div style={{ flex: 2, background: "#eff6ff", borderRadius: 12, padding: 16 }}>
-            {[
+            {([
               ["Saldo inicial", saldoInicial, false],
               ["+ Ventas efectivo", ventasEfe, false],
               ["+ Ingresos extra (efe)", ingresosEfe, false],
               ["− Gastos efectivo", gastosEfe, true],
-              ["− Guardado caja fuerte", totalCajaFuerte, true],
-            ].map(([lbl, val, neg]) => (
-              <div key={String(lbl)} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 5, color: neg ? "#dc2626" : "#374151" }}>
-                <span>{String(lbl)}</span>
-                <span style={{ fontWeight: 700 }}>{neg ? "- " : ""}{formatCurrency(Number(val))}</span>
+              ["− Guardado", totalGuardado, true],
+            ] as [string, number, boolean][]).map(([lbl, val, neg]) => (
+              <div key={lbl} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 5, color: neg ? "#dc2626" : "#374151" }}>
+                <span>{lbl}</span>
+                <span style={{ fontWeight: 700 }}>{neg ? "- " : ""}{formatCurrency(val)}</span>
               </div>
             ))}
             <div style={{ borderTop: "1px solid #bfdbfe", paddingTop: 8, marginTop: 8, display: "flex", justifyContent: "space-between" }}>
@@ -623,11 +590,9 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
               </div>
             )}
           </div>
-          {/* Guardado */}
           <div style={{ flex: 1, background: "#111827", borderRadius: 12, padding: 16, color: "#fff" }}>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", fontWeight: 700, marginBottom: 12 }}>Guardado</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", margin: "0 0 4px" }}>Total guardado hoy</p>
-            <p style={{ fontSize: 22, fontWeight: 900, margin: 0 }}>{formatCurrency(totalCajaFuerte)}</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", fontWeight: 700, marginBottom: 12 }}>Guardado (neto)</p>
+            <p style={{ fontSize: 22, fontWeight: 900, margin: 0 }}>{formatCurrency(saldoGuardado)}</p>
             {totalIngresos > 0 && (
               <>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", margin: "12px 0 4px" }}>Ingresos extra</p>
@@ -648,31 +613,14 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
 }
 
 // ─────────────────────────────────────────────────────────────
-// SUMMARY ROW
-// ─────────────────────────────────────────────────────────────
-function SRow({ label, value, color, bold }: { label: string; value: number; color?: string; bold?: boolean }) {
-  return (
-    <div className="flex justify-between items-center">
-      <span className={`text-sm ${bold ? "font-bold text-gray-900" : "text-gray-500"}`}>{label}</span>
-      <span className={`text-sm font-semibold ${color ?? (bold ? "text-gray-900 font-black" : "text-gray-700")}`}>
-        {formatCurrency(value)}
-      </span>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 // HISTORIAL TAB
 // ─────────────────────────────────────────────────────────────
-function HistorialTab({
-  historial,
-  onVer,
-  onDescargar,
-}: {
-  historial: CajaDiariaResumen[];
-  onVer: (c: CajaDiariaResumen) => void;
-  onDescargar: (c: CajaDiariaResumen) => void;
+function HistorialTab({ historial, onDescargar }: {
+  historial: VResumenCaja[];
+  onDescargar: (c: VResumenCaja) => void;
 }) {
+  const router = useRouter();
+
   if (historial.length === 0) {
     return (
       <div className="card text-center py-14 text-gray-400">
@@ -682,31 +630,28 @@ function HistorialTab({
       </div>
     );
   }
-
   return (
     <div className="space-y-3">
-      {historial.map((c) => (
+      {historial.map(c => (
         <div key={c.id} className="card flex items-center justify-between">
-          <div>
+          <button className="flex-1 text-left" onClick={() => router.push(`/caja/historial/${c.id}`)}>
             <p className="font-bold text-gray-900">{formatDate(c.fecha)}</p>
             <div className="flex gap-3 text-xs text-gray-500 mt-1">
-              <span>{c.cantidad_ventas ?? 0} ventas</span>
+              <span>{c.cantidad_ventas} ventas</span>
               <span>Ventas: {formatCurrency((c.total_efectivo ?? 0) + (c.total_transferencias ?? 0))}</span>
               {(c.total_gastos ?? 0) > 0 && <span>Gastos: {formatCurrency(c.total_gastos ?? 0)}</span>}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
+          </button>
+          <div className="flex items-center gap-2 shrink-0">
             <div className="text-right mr-1">
-              <p className="font-black text-brand-blue text-lg">{formatCurrency(c.saldo_final)}</p>
+              <p className="font-black text-brand-blue text-lg">{formatCurrency(c.saldo_final ?? 0)}</p>
               <p className="text-xs text-gray-400">Saldo final</p>
             </div>
-            <button onClick={() => onVer(c)}
-              title="Ver detalle"
+            <button onClick={() => router.push(`/caja/historial/${c.id}`)} title="Ver detalle"
               className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
               <FileText className="w-4 h-4" />
             </button>
-            <button onClick={() => onDescargar(c)}
-              title="Descargar reporte"
+            <button onClick={() => onDescargar(c)} title="Descargar reporte"
               className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
               <Download className="w-4 h-4" />
             </button>
@@ -723,71 +668,78 @@ function HistorialTab({
 export default function CajaPage() {
   const supabase = createClient();
   const { isAdmin } = useProfile();
+  const hoy = getHoy();
 
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"hoy" | "historial">("hoy");
+  const [isOnline, setIsOnline] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
-  // Today
   const [registros, setRegistros] = useState<RegistroLocal[]>([]);
   const [saldoInicial, setSaldoInicial] = useState(0);
   const [cajaDiariaId, setCajaDiariaId] = useState<number | null>(null);
   const [cajaEstado, setCajaEstado] = useState<"abierta" | "cerrada">("abierta");
+  const [pendingCount, setPendingCount] = useState(0);
 
-  // History
-  const [historial, setHistorial] = useState<CajaDiariaResumen[]>([]);
-  const [historialDetalle, setHistorialDetalle] = useState<{
-    caja: CajaDiariaResumen;
-    registros: RegistroLocal[];
-  } | null>(null);
+  const [historial, setHistorial] = useState<VResumenCaja[]>([]);
 
-  // Modals
   const [modalVenta, setModalVenta] = useState(false);
   const [modalGasto, setModalGasto] = useState(false);
   const [modalIngreso, setModalIngreso] = useState(false);
   const [modalCajaFuerte, setModalCajaFuerte] = useState(false);
+  const [modalRetiro, setModalRetiro] = useState(false);
   const [modalCerrar, setModalCerrar] = useState(false);
   const [loadingCerrar, setLoadingCerrar] = useState(false);
   const [efectivoContado, setEfectivoContado] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  // Report rendering
   const [reporteParams, setReporteParams] = useState<ReporteParams | null>(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const cajaDiariaIdRef = useRef<number | null>(null);
+  cajaDiariaIdRef.current = cajaDiariaId;
 
-  // ─── Computed ─────────────────────────────────────────────
-  const ventas = registros.filter((r) => r.tipo === "venta");
-  const gastos = registros.filter((r) => r.tipo === "gasto");
-  const ingresos = registros.filter((r) => r.tipo === "ingreso");
-  const cajaFuerteItems = registros.filter((r) => r.tipo === "caja_fuerte");
-
+  // ── Totales computados ─────────────────────────────────────
+  const ventas = registros.filter(r => r.tipo === "venta");
+  const gastos = registros.filter(r => r.tipo === "gasto");
+  const ingresos = registros.filter(r => r.tipo === "ingreso");
+  const cajaFuerteItems = registros.filter(r => r.tipo === "caja_fuerte" && r.valor > 0);
+  const retiroItems     = registros.filter(r => r.tipo === "caja_fuerte" && r.valor < 0);
   const totalVentas = ventas.reduce((s, r) => s + r.valor, 0);
   const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
+  const comisiones = ventas
+    .filter(r => r.cantidad > 0 && r.valor / r.cantidad > 25000)
+    .reduce((s, r) => s + r.cantidad * 1000, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
-  const totalCajaFuerte = cajaFuerteItems.reduce((s, r) => s + r.valor, 0);
+  // Lo que salió de la caja hacia el guardado
+  const totalGuardado = cajaFuerteItems.reduce((s, r) => s + r.valor, 0);
+  // Lo que salió del guardado hacia afuera (pago mercancía, etc.)
+  const totalRetiros  = retiroItems.reduce((s, r) => s + Math.abs(r.valor), 0);
+  // Saldo neto que queda en el guardado
+  const saldoGuardadoNeto = totalGuardado - totalRetiros;
   const ventasEfectivo = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
   const ventasTransferencia = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
-  const gastosEfectivo = gastos.filter((r) => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const ingresosEfectivo = ingresos.filter((r) => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const debeHaberEnCaja = saldoInicial + ventasEfectivo + ingresosEfectivo - gastosEfectivo - totalCajaFuerte;
+  const gastosEfectivo = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
+  const ingresosEfectivo = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
+  // Solo se resta lo que salió de la caja al guardado, no los retiros del guardado
+  const debeHaberEnCaja = saldoInicial + ventasEfectivo + ingresosEfectivo - gastosEfectivo - totalGuardado;
   const efectivoContadoNum = parseFloat(efectivoContado) || 0;
   const diferenciaCaja = efectivoContadoNum - debeHaberEnCaja;
 
-  // ─── Parse DB registros ───────────────────────────────────
+  // ── Parse DB registros ──────────────────────────────────────
   function parseRegistros(data: any[]): RegistroLocal[] {
-    return data.map((r) => ({
+    return data.map(r => ({
       id: genId(),
       dbId: r.id,
+      movimientoId: r.movimiento_id ?? undefined,
       fecha: r.fecha,
       hora: r.hora ?? "00:00:00",
       tipo: r.tipo as TipoRegistroCaja,
       descripcion: r.descripcion,
-      productoId: r.producto_id,
-      productoRef: r.productos?.referencia ?? null,
-      tallaId: r.talla_id,
-      tallaNombre: r.tallas?.nombre ?? null,
-      cantidad: r.cantidad ?? 1,
+      productoId: r.movimientos?.producto_id ?? null,
+      productoRef: r.movimientos?.productos?.referencia ?? null,
+      tallaId: r.movimientos?.talla_id ?? null,
+      tallaNombre: r.movimientos?.tallas?.nombre ?? null,
+      cantidad: r.movimientos?.cantidad ?? 1,
       valor: r.valor,
       metodoPago: r.metodo_pago,
       montoEfectivo: r.monto_efectivo ?? 0,
@@ -795,225 +747,220 @@ export default function CajaPage() {
     }));
   }
 
-  // ─── Load data ────────────────────────────────────────────
+  // ── Load data ───────────────────────────────────────────────
   const cargarDatos = useCallback(async () => {
     setLoading(true);
-
     const [{ data: cajaHoy }, { data: hist }] = await Promise.all([
       supabase.from("caja_diaria").select("*").eq("fecha", hoy).maybeSingle(),
-      supabase.from("caja_diaria").select("*").eq("estado", "cerrada").order("fecha", { ascending: false }).limit(30),
+      supabase.from("v_resumen_caja" as any).select("*").eq("estado", "cerrada")
+        .order("fecha", { ascending: false }).limit(30),
     ]);
 
-    setHistorial((hist as CajaDiariaResumen[]) ?? []);
+    setHistorial((hist as unknown as VResumenCaja[]) ?? []);
 
     if (cajaHoy) {
       setCajaDiariaId(cajaHoy.id);
       setSaldoInicial(cajaHoy.saldo_inicial);
       setCajaEstado(cajaHoy.estado);
-
       const { data: regs } = await supabase
         .from("registros_caja")
-        .select("*, productos(referencia), tallas(nombre)")
-        .eq("fecha", hoy)
+        .select("*, movimientos(producto_id, talla_id, cantidad, productos(referencia), tallas(nombre))")
+        .eq("caja_diaria_id", cajaHoy.id)
         .order("hora", { ascending: true });
-
       setRegistros(parseRegistros(regs ?? []));
     } else {
-      // Use last closed caja's saldo_final as default
       const { data: ultima } = await supabase
-        .from("caja_diaria")
-        .select("saldo_final")
-        .eq("estado", "cerrada")
-        .order("fecha", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (ultima) setSaldoInicial(ultima.saldo_final);
+        .from("v_resumen_caja" as any).select("saldo_final")
+        .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
+      if (ultima) setSaldoInicial((ultima as any).saldo_final ?? 0);
       setCajaDiariaId(null);
       setCajaEstado("abierta");
       setRegistros([]);
     }
-
     setLoading(false);
   }, [hoy]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Online / Offline detection ──────────────────────────────
   useEffect(() => {
-    cargarDatos();
-    // Check for pending offline records
-    const pending = JSON.parse(localStorage.getItem(LS_KEY) ?? "[]") as RegistroLocal[];
-    if (pending.length > 0) {
-      toast(`${pending.length} registro(s) pendientes de sincronizar`, { icon: "⚠️" });
-    }
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => {
+      setIsOnline(true);
+      sincronizarPendientes();
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Ensure caja diaria exists ────────────────────────────
+  useEffect(() => {
+    cargarDatos();
+    const pending = JSON.parse(localStorage.getItem(LS_KEY) ?? "[]") as PendingQueueItem[];
+    setPendingCount(pending.length);
+    if (pending.length > 0) toast(`${pending.length} registro(s) pendientes de sincronizar`, { icon: "⚠️" });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Ensure caja diaria exists ───────────────────────────────
   async function ensureCajaDiaria(): Promise<number> {
-    if (cajaDiariaId) return cajaDiariaId;
-
+    if (cajaDiariaIdRef.current) return cajaDiariaIdRef.current;
     const { data: existing } = await supabase
-      .from("caja_diaria")
-      .select("id")
-      .eq("fecha", hoy)
-      .eq("estado", "abierta")
-      .maybeSingle();
-
+      .from("caja_diaria").select("id").eq("fecha", hoy).maybeSingle();
     if (existing) {
       setCajaDiariaId(existing.id);
       return existing.id;
     }
-
     const { data, error } = await supabase
       .from("caja_diaria")
-      .insert({
-        fecha: hoy,
-        saldo_inicial: saldoInicial,
-        total_efectivo: 0,
-        total_nequi: 0,
-        total_transferencias: 0,
-        total_datafono: 0,
-        total_descuentos: 0,
-        total_devoluciones: 0,
-        total_gastos: 0,
-        total_ingresos_extra: 0,
-        guardado_caja_fuerte: 0,
-        saldo_final: 0,
-        cantidad_ventas: 0,
-        estado: "abierta",
-      } as any)
-      .select("id")
-      .single();
-
+      .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
+      .select("id").single();
     if (error || !data) throw new Error("Error creando caja: " + error?.message);
     setCajaDiariaId(data.id);
     return data.id;
   }
 
-  // ─── Add registro ──────────────────────────────────────────
+  // ── Guardar un registro en DB ────────────────────────────────
+  async function guardarEnDB(
+    data: Omit<RegistroLocal, "id" | "fecha" | "hora">,
+    fecha: string,
+    hora: string,
+    cid: number
+  ): Promise<{ dbId: number; movimientoId?: number }> {
+    let movimientoId: number | undefined;
+
+    // Para ventas: crear movimiento inmediatamente (stock se actualiza via trigger)
+    if (data.tipo === "venta" && data.productoId && data.tallaId) {
+      const { data: stockRow } = await supabase
+        .from("stock").select("ubicacion_id, cantidad")
+        .eq("producto_id", data.productoId).eq("talla_id", data.tallaId)
+        .gt("cantidad", 0).order("cantidad", { ascending: false })
+        .limit(1).maybeSingle();
+
+      const { data: mov, error: movErr } = await supabase
+        .from("movimientos")
+        .insert({
+          producto_id: data.productoId,
+          talla_id: data.tallaId,
+          ubicacion_id: stockRow?.ubicacion_id ?? 1,
+          cantidad: data.cantidad,
+          tipo: "salida" as const,
+          canal: "venta_tienda" as const,
+          precio_venta: data.valor / data.cantidad,
+          metodo_pago: data.metodoPago as MetodoPago,
+          caja_diaria_id: cid,
+        }).select("id").single();
+
+      if (movErr) throw movErr;
+      movimientoId = mov?.id;
+    }
+
+    const { data: saved, error } = await supabase
+      .from("registros_caja")
+      .insert({
+        caja_diaria_id: cid,
+        movimiento_id: movimientoId ?? null,
+        fecha,
+        hora,
+        tipo: data.tipo,
+        descripcion: data.descripcion,
+        valor: data.valor,
+        metodo_pago: data.metodoPago,
+        monto_efectivo: data.montoEfectivo,
+        monto_transferencia: data.montoTransferencia,
+      }).select("id").single();
+
+    if (error) throw error;
+    return { dbId: saved.id, movimientoId };
+  }
+
+  // ── Agregar registro (con optimistic update y fallback offline) ──
   async function agregarRegistro(data: Omit<RegistroLocal, "id" | "fecha" | "hora">) {
     const { fecha, hora } = getNow();
     const id = genId();
     const reg: RegistroLocal = { id, fecha, hora, pending: true, ...data };
-
-    // Optimistic update
-    setRegistros((prev) => [...prev, reg]);
+    setRegistros(prev => [...prev, reg]);
 
     try {
       const cid = await ensureCajaDiaria();
-      const { data: saved, error } = await supabase
-        .from("registros_caja")
-        .insert({
-          fecha,
-          hora,
-          tipo: data.tipo,
-          descripcion: data.descripcion,
-          producto_id: data.productoId,
-          talla_id: data.tallaId,
-          cantidad: data.cantidad,
-          valor: data.valor,
-          metodo_pago: data.metodoPago,
-          monto_efectivo: data.montoEfectivo,
-          monto_transferencia: data.montoTransferencia,
-          caja_diaria_id: cid,
-        })
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      setRegistros((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, dbId: saved?.id, pending: false } : r))
-      );
-
+      const { dbId, movimientoId } = await guardarEnDB(data, fecha, hora, cid);
+      setRegistros(prev => prev.map(r => r.id === id ? { ...r, dbId, movimientoId, pending: false } : r));
       const labels: Record<TipoRegistroCaja, string> = {
-        venta: "Venta registrada",
-        gasto: "Gasto registrado",
-        ingreso: "Ingreso registrado",
-        caja_fuerte: "Guardado en caja fuerte",
+        venta: "Venta registrada", gasto: "Gasto registrado",
+        ingreso: "Ingreso registrado", caja_fuerte: "Guardado en caja fuerte",
       };
       toast.success(labels[data.tipo]);
-    } catch (err: any) {
-      setRegistros((prev) => prev.map((r) => (r.id === id ? { ...r, pending: true } : r)));
-      const pending = JSON.parse(localStorage.getItem(LS_KEY) ?? "[]");
-      localStorage.setItem(LS_KEY, JSON.stringify([...pending, reg]));
+    } catch {
+      setRegistros(prev => prev.map(r => r.id === id ? { ...r, pending: true } : r));
+      const pending: PendingQueueItem[] = JSON.parse(localStorage.getItem(LS_KEY) ?? "[]");
+      pending.push({ ...reg, localId: id });
+      localStorage.setItem(LS_KEY, JSON.stringify(pending));
+      setPendingCount(pending.length);
       toast.error("Sin conexión — guardado localmente");
     }
   }
 
-  // ─── Delete registro ──────────────────────────────────────
+  // ── Sincronizar pendientes offline ──────────────────────────
+  async function sincronizarPendientes() {
+    const pending: PendingQueueItem[] = JSON.parse(localStorage.getItem(LS_KEY) ?? "[]");
+    if (pending.length === 0) return;
+    setSyncing(true);
+    const restantes: PendingQueueItem[] = [];
+    for (const item of pending) {
+      try {
+        const cid = await ensureCajaDiaria();
+        const { dbId, movimientoId } = await guardarEnDB(item, item.fecha, item.hora, cid);
+        setRegistros(prev => prev.map(r =>
+          r.id === item.localId ? { ...r, dbId, movimientoId, pending: false } : r
+        ));
+      } catch {
+        restantes.push(item);
+      }
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify(restantes));
+    setPendingCount(restantes.length);
+    if (restantes.length < pending.length)
+      toast.success(`${pending.length - restantes.length} registro(s) sincronizados`);
+    setSyncing(false);
+  }
+
+  // ── Eliminar registro ───────────────────────────────────────
   async function eliminarRegistro(localId: string) {
-    const reg = registros.find((r) => r.id === localId);
-    setRegistros((prev) => prev.filter((r) => r.id !== localId));
+    const reg = registros.find(r => r.id === localId);
+    setRegistros(prev => prev.filter(r => r.id !== localId));
     setDeleteId(null);
     if (reg?.dbId) {
+      // Si hay movimiento asociado (venta), también eliminarlo — el trigger revierte el stock
+      if (reg.movimientoId) {
+        await supabase.from("movimientos").delete().eq("id", reg.movimientoId);
+      }
       await supabase.from("registros_caja").delete().eq("id", reg.dbId);
     }
     toast.success("Eliminado");
   }
 
-  // ─── Close caja ───────────────────────────────────────────
+  // ── Cerrar caja ─────────────────────────────────────────────
   async function cerrarCaja() {
     if (!isAdmin) return;
     setLoadingCerrar(true);
-
-    // Snapshot for report (before state changes)
     const regsSnapshot = [...registros];
     const saldoSnap = saldoInicial;
     const contadoSnap = efectivoContadoNum || debeHaberEnCaja;
 
     try {
       const cid = await ensureCajaDiaria();
-
+      // Solo actualizar estado y datos de cierre — los totales se calculan en v_resumen_caja
       await supabase.from("caja_diaria").update({
-        saldo_inicial: saldoInicial,
-        total_efectivo: ventasEfectivo,
-        total_transferencias: ventasTransferencia,
-        total_nequi: 0,
-        total_datafono: 0,
-        total_gastos: totalGastos,
-        total_ingresos_extra: totalIngresos,
-        guardado_caja_fuerte: totalCajaFuerte,
-        saldo_final: contadoSnap,
-        cantidad_ventas: ventas.length,
+        guardado_caja_fuerte: totalGuardado,
         efectivo_contado: contadoSnap,
-        diferencia_caja: diferenciaCaja,
+        diferencia_caja: contadoSnap - debeHaberEnCaja,
         estado: "cerrada",
-      } as any).eq("id", cid);
-
-      // Create movimientos for each venta
-      for (const v of ventas) {
-        if (!v.productoId || !v.tallaId) continue;
-        const { data: stockData } = await supabase
-          .from("stock")
-          .select("ubicacion_id")
-          .eq("producto_id", v.productoId)
-          .eq("talla_id", v.tallaId)
-          .order("cantidad", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        await supabase.from("movimientos").insert({
-          producto_id: v.productoId,
-          talla_id: v.tallaId,
-          ubicacion_id: stockData?.ubicacion_id ?? 1,
-          cantidad: v.cantidad,
-          tipo: "salida",
-          canal: "venta_tienda",
-          precio_venta: v.valor / v.cantidad,
-          metodo_pago: v.metodoPago as MetodoPago,
-          usuario_id: null,
-        });
-      }
+      }).eq("id", cid);
 
       setCajaEstado("cerrada");
       setModalCerrar(false);
-      toast.success("¡Caja cerrada! Generando reporte...");
-
-      // Download report immediately with snapshot
-      await descargarReporte({
-        registros: regsSnapshot,
-        saldoInicial: saldoSnap,
-        fecha: hoy,
-        efectivoContado: contadoSnap,
-      });
+      toast.success("¡Caja cerrada!");
 
       await cargarDatos();
     } catch (err: any) {
@@ -1023,25 +970,27 @@ export default function CajaPage() {
     }
   }
 
-  // ─── Download report ──────────────────────────────────────
+  // ── Reabrir caja ────────────────────────────────────────────
+  async function reabrirCaja() {
+    if (!isAdmin || !cajaDiariaId) return;
+    if (!confirm("¿Reabrir la caja? Se podrán agregar más registros.")) return;
+    const { error } = await supabase.from("caja_diaria").update({ estado: "abierta" }).eq("id", cajaDiariaId);
+    if (error) { toast.error("Error al reabrir"); return; }
+    setCajaEstado("abierta");
+    toast.success("Caja reabierta");
+    await cargarDatos();
+  }
+
+  // ── Descargar reporte ───────────────────────────────────────
   async function descargarReporte(params: ReporteParams) {
     setGenerandoReporte(true);
     setReporteParams(params);
-    // Wait for React to render the hidden ReporteCierre
-    await new Promise((r) => setTimeout(r, 300));
-
+    await new Promise(r => setTimeout(r, 300));
     try {
       const html2canvas = (await import("html2canvas")).default;
       const el = document.getElementById("reporte-cierre");
       if (!el) { toast.error("No se pudo generar el reporte"); return; }
-
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
       const link = document.createElement("a");
       link.download = `cierre-caja-${params.fecha}.png`;
       link.href = canvas.toDataURL("image/png");
@@ -1055,540 +1004,291 @@ export default function CajaPage() {
     }
   }
 
-  // ─── View historial detail ────────────────────────────────
-  async function verHistorialDetalle(caja: CajaDiariaResumen) {
+  async function descargarHistorial(caja: VResumenCaja) {
     const { data: regs } = await supabase
       .from("registros_caja")
-      .select("*, productos(referencia), tallas(nombre)")
-      .eq("fecha", caja.fecha)
-      .order("hora", { ascending: true });
-
-    setHistorialDetalle({ caja, registros: parseRegistros(regs ?? []) });
-  }
-
-  async function descargarHistorial(caja: CajaDiariaResumen) {
-    const { data: regs } = await supabase
-      .from("registros_caja")
-      .select("*, productos(referencia), tallas(nombre)")
-      .eq("fecha", caja.fecha)
-      .order("hora", { ascending: true });
-
+      .select("*, movimientos(producto_id, talla_id, cantidad, productos(referencia), tallas(nombre))")
+      .eq("caja_diaria_id", caja.id).order("hora", { ascending: true });
     await descargarReporte({
       registros: parseRegistros(regs ?? []),
       saldoInicial: caja.saldo_inicial,
       fecha: caja.fecha,
-      efectivoContado: caja.efectivo_contado ?? caja.saldo_final,
+      efectivoContado: caja.efectivo_contado ?? caja.saldo_final ?? 0,
     });
   }
 
-  // ─── Date display ─────────────────────────────────────────
   const fechaFormateada = new Intl.DateTimeFormat("es-CO", {
     weekday: "long", day: "2-digit", month: "long", year: "numeric",
   }).format(new Date());
 
-  if (loading) return <Spinner className="py-20" />;
+  // ── RENDER ─────────────────────────────────────────────────
+  if (loading) return <Spinner className="h-screen" />;
 
-  // ─────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Hidden report for html2canvas */}
+    <div className="max-w-3xl mx-auto px-4 md:px-8 pt-6 pb-24">
+
+      {/* Reporte oculto para html2canvas */}
       {reporteParams && (
-        <div style={{ position: "fixed", left: -9999, top: -9999, zIndex: -1, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", left: -9999, top: 0 }}>
           <ReporteCierre {...reporteParams} />
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 pb-24 pt-4">
-        {/* ─── HEADER ──────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <LayoutDashboard className="w-6 h-6 text-brand-blue" />
-              <h1 className="text-xl font-bold text-gray-900">Caja del Día</h1>
-              {cajaEstado === "cerrada" && tab === "hoy" && (
-                <span className="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs font-bold rounded-full uppercase">
-                  Cerrada
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-gray-500 mt-0.5 capitalize">{fechaFormateada}</p>
-          </div>
-
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-            <button
-              onClick={() => setTab("hoy")}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === "hoy" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              Hoy
-            </button>
-            <button
-              onClick={() => setTab("historial")}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${tab === "historial" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              <History className="w-3.5 h-3.5" /> Historial
-            </button>
-          </div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <LayoutDashboard className="w-6 h-6 text-brand-blue" /> Caja
+          </h1>
+          <p className="text-xs text-gray-400 capitalize">{fechaFormateada}</p>
         </div>
-
-        {tab === "historial" ? (
-          <HistorialTab
-            historial={historial}
-            onVer={verHistorialDetalle}
-            onDescargar={descargarHistorial}
-          />
-        ) : (
-          <>
-            {/* ─── SALDO INICIAL ─────────────────────────── */}
-            <div className="card mb-4 flex flex-wrap items-center gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-700">Saldo inicial de caja</p>
-                <p className="text-xs text-gray-400">Del cierre del día anterior — editable si necesita ajuste</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-gray-400 text-lg">$</span>
-                <input
-                  type="number"
-                  value={saldoInicial}
-                  onChange={(e) => setSaldoInicial(parseFloat(e.target.value) || 0)}
-                  disabled={cajaEstado === "cerrada"}
-                  className="w-36 text-right text-xl font-black text-gray-900 border-0 border-b-2 border-gray-200 focus:border-brand-blue outline-none bg-transparent py-1 disabled:opacity-50"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-
-            {/* ─── ACTION BUTTONS ───────────────────────── */}
-            {cajaEstado !== "cerrada" && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                <button
-                  onClick={() => setModalVenta(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold text-sm active:scale-95 transition-all"
-                >
-                  <ShoppingBag className="w-4 h-4" /> Venta
-                </button>
-                <button
-                  onClick={() => setModalGasto(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold text-sm active:scale-95 transition-all"
-                >
-                  <TrendingDown className="w-4 h-4" /> Gasto
-                </button>
-                <button
-                  onClick={() => setModalIngreso(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-semibold text-sm active:scale-95 transition-all"
-                >
-                  <TrendingUp className="w-4 h-4" /> Ingreso
-                </button>
-                <button
-                  onClick={() => setModalCajaFuerte(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-semibold text-sm active:scale-95 transition-all"
-                >
-                  <Shield className="w-4 h-4" /> Caja Fuerte
-                </button>
-                {isAdmin && (
-                  <button
-                    onClick={() => setModalCerrar(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-black text-white rounded-xl font-semibold text-sm active:scale-95 transition-all sm:ml-auto"
-                  >
-                    <Lock className="w-4 h-4" /> Cerrar Caja
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* ─── CLOSED BANNER ────────────────────────── */}
-            {cajaEstado === "cerrada" && (
-              <div className="bg-gray-900 text-white rounded-2xl p-5 mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="w-8 h-8 text-green-400 shrink-0" />
-                  <div>
-                    <p className="font-bold text-lg">Caja cerrada</p>
-                    <p className="text-sm text-gray-400">Este día ya fue cerrado</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() =>
-                    descargarReporte({
-                      registros,
-                      saldoInicial,
-                      fecha: hoy,
-                      efectivoContado: efectivoContadoNum || debeHaberEnCaja,
-                    })
-                  }
-                  disabled={generandoReporte}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
-                >
-                  <Download className="w-4 h-4" />
-                  {generandoReporte ? "Generando..." : "Descargar reporte"}
-                </button>
-              </div>
-            )}
-
-            <div className="flex flex-col xl:flex-row gap-4">
-              {/* ─── TABLE ───────────────────────────────── */}
-              <div className="flex-1 card p-0 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[700px]">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        {["#", "Hora", "Tipo", "Descripción / Producto", "Talla", "Cant.", "Valor", "Efectivo", "Transf.", ""].map(
-                          (h, i) => (
-                            <th
-                              key={i}
-                              className={`px-3 py-3 text-xs font-bold text-gray-400 uppercase ${i >= 6 ? "text-right" : "text-left"} ${i === 9 ? "w-16" : ""}`}
-                            >
-                              {h}
-                            </th>
-                          )
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {registros.length === 0 ? (
-                        <tr>
-                          <td colSpan={10} className="text-center py-14 text-gray-400">
-                            <LayoutDashboard className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                            <p className="font-medium">Aún no hay registros hoy</p>
-                            <p className="text-xs mt-1">Usa los botones de arriba para agregar</p>
-                          </td>
-                        </tr>
-                      ) : (
-                        registros.map((r, i) => (
-                          <tr
-                            key={r.id}
-                            className={`border-b border-gray-50 transition-colors ${TIPO_ROW[r.tipo]} ${r.pending ? "opacity-60" : ""}`}
-                          >
-                            <td className="px-3 py-2.5 text-gray-400 text-xs w-8">{i + 1}</td>
-                            <td className="px-3 py-2.5 text-gray-500 text-xs font-mono w-16">
-                              {r.hora.slice(0, 5)}
-                            </td>
-                            <td className="px-3 py-2.5 w-28">
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${TIPO_BADGE[r.tipo]}`}>
-                                {TIPO_LABEL[r.tipo]}
-                              </span>
-                              {r.pending && <span className="ml-1 text-orange-400 text-xs">⏳</span>}
-                            </td>
-                            <td className="px-3 py-2.5 font-medium text-gray-900 min-w-[160px]">
-                              {r.descripcion}
-                            </td>
-                            <td className="px-3 py-2.5 text-gray-500 text-xs w-16">
-                              {r.tallaNombre ?? "—"}
-                            </td>
-                            <td className="px-3 py-2.5 text-right text-gray-700 w-12">
-                              {r.tipo === "venta" ? r.cantidad : "—"}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-bold w-28">
-                              <span
-                                className={
-                                  r.tipo === "gasto" || r.tipo === "caja_fuerte"
-                                    ? "text-red-600"
-                                    : r.tipo === "ingreso"
-                                    ? "text-blue-700"
-                                    : "text-gray-900"
-                                }
-                              >
-                                {r.tipo === "gasto" || r.tipo === "caja_fuerte" ? "−" : ""}
-                                {formatCurrency(r.valor)}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5 text-right text-green-700 font-medium text-xs w-28">
-                              {r.montoEfectivo > 0 ? formatCurrency(r.montoEfectivo) : "—"}
-                            </td>
-                            <td className="px-3 py-2.5 text-right text-blue-700 font-medium text-xs w-28">
-                              {r.montoTransferencia > 0 ? formatCurrency(r.montoTransferencia) : "—"}
-                            </td>
-                            <td className="px-3 py-2.5 w-16">
-                              {cajaEstado !== "cerrada" &&
-                                (deleteId === r.id ? (
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={() => eliminarRegistro(r.id)}
-                                      className="px-2 py-1 bg-red-500 text-white rounded-lg text-xs font-bold"
-                                    >
-                                      ✓
-                                    </button>
-                                    <button
-                                      onClick={() => setDeleteId(null)}
-                                      className="px-2 py-1 bg-gray-200 rounded-lg text-xs"
-                                    >
-                                      ✗
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => setDeleteId(r.id)}
-                                    className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                ))}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-
-                    {/* Totals footer */}
-                    {registros.length > 0 && (
-                      <tfoot>
-                        <tr className="bg-gray-50 border-t-2 border-gray-200">
-                          <td colSpan={6} className="px-3 py-3 text-xs font-bold text-gray-500 uppercase">
-                            Totales del día
-                          </td>
-                          <td className="px-3 py-3 text-right font-bold text-gray-900">
-                            {formatCurrency(totalVentas - totalGastos + totalIngresos)}
-                          </td>
-                          <td className="px-3 py-3 text-right font-bold text-green-700">
-                            {formatCurrency(ventasEfectivo + ingresosEfectivo - gastosEfectivo - totalCajaFuerte)}
-                          </td>
-                          <td className="px-3 py-3 text-right font-bold text-blue-700">
-                            {formatCurrency(ventasTransferencia)}
-                          </td>
-                          <td />
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
-              </div>
-
-              {/* ─── SUMMARY PANEL ───────────────────────── */}
-              <div className="xl:w-72 space-y-3 shrink-0">
-                {/* Breakdown */}
-                <div className="card space-y-2">
-                  <p className="font-bold text-gray-700 text-sm mb-3">Resumen del Día</p>
-                  <SRow label="Ventas en efectivo" value={ventasEfectivo} color="text-green-700" />
-                  <SRow label="Ventas transferencia" value={ventasTransferencia} color="text-blue-700" />
-                  <div className="border-t pt-2">
-                    <SRow label="Total ventas" value={totalVentas} bold />
-                  </div>
-                  <SRow label="Total gastos" value={-totalGastos} color="text-red-600" />
-                  {totalIngresos > 0 && (
-                    <SRow label="Ingresos extra" value={totalIngresos} color="text-blue-600" />
-                  )}
-                  {totalCajaFuerte > 0 && (
-                    <SRow label="Caja fuerte" value={-totalCajaFuerte} color="text-yellow-700" />
-                  )}
-                </div>
-
-                {/* Cash calculation */}
-                <div className="bg-brand-blue text-white rounded-2xl p-4">
-                  <p className="text-xs font-bold uppercase tracking-wider opacity-70 mb-3">
-                    Cuenta de Caja
-                  </p>
-                  <div className="space-y-1.5 text-sm">
-                    <div className="flex justify-between opacity-80">
-                      <span>Saldo inicial</span>
-                      <span>{formatCurrency(saldoInicial)}</span>
-                    </div>
-                    <div className="flex justify-between opacity-80">
-                      <span>+ Efectivo del día</span>
-                      <span>{formatCurrency(ventasEfectivo + ingresosEfectivo)}</span>
-                    </div>
-                    <div className="flex justify-between opacity-80">
-                      <span>− Gastos efectivo</span>
-                      <span>{formatCurrency(gastosEfectivo)}</span>
-                    </div>
-                    {totalCajaFuerte > 0 && (
-                      <div className="flex justify-between opacity-80">
-                        <span>− Caja fuerte</span>
-                        <span>{formatCurrency(totalCajaFuerte)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-base font-black border-t border-white/30 pt-2 mt-1">
-                      <span>DEBE HABER EN CAJA</span>
-                      <span>{formatCurrency(debeHaberEnCaja)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {isAdmin && cajaEstado !== "cerrada" && (
-                  <button
-                    onClick={() => setModalCerrar(true)}
-                    className="w-full btn-danger"
-                  >
-                    <Lock className="w-5 h-5" /> Cerrar Caja del Día
-                  </button>
-                )}
-              </div>
-            </div>
-          </>
-        )}
+        <div className="flex items-center gap-2">
+          {!isOnline && (
+            <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-200 px-2 py-1 rounded-lg">
+              <WifiOff className="w-3 h-3" /> Sin conexión
+            </span>
+          )}
+          {pendingCount > 0 && isOnline && (
+            <button onClick={sincronizarPendientes} disabled={syncing}
+              className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-100">
+              <RefreshCw className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Sincronizando..." : `${pendingCount} pendiente(s)`}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* ─── MODALS ──────────────────────────────────────────── */}
-      {modalVenta && (
-        <ModalVenta onClose={() => setModalVenta(false)} onSave={agregarRegistro} />
-      )}
-      {modalGasto && (
-        <ModalGasto onClose={() => setModalGasto(false)} onSave={agregarRegistro} />
-      )}
-      {modalIngreso && (
-        <ModalIngreso onClose={() => setModalIngreso(false)} onSave={agregarRegistro} />
-      )}
-      {modalCajaFuerte && (
-        <ModalCajaFuerte onClose={() => setModalCajaFuerte(false)} onSave={agregarRegistro} />
-      )}
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
+        {(["hoy", "historial"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${tab === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
+            {t === "hoy" ? "Hoy" : "Historial"}
+          </button>
+        ))}
+      </div>
 
-      {/* Cerrar Caja Modal */}
-      <Modal open={modalCerrar} onClose={() => setModalCerrar(false)} title="Cerrar Caja del Día" size="md">
-        <div className="space-y-4">
-          {/* Summary */}
-          <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">{ventas.length} ventas</span>
-              <span className="font-bold">{formatCurrency(totalVentas)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Gastos</span>
-              <span className="font-bold text-red-600">− {formatCurrency(totalGastos)}</span>
-            </div>
-            {totalIngresos > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Ingresos extra</span>
-                <span className="font-bold text-blue-600">+ {formatCurrency(totalIngresos)}</span>
-              </div>
-            )}
-            {totalCajaFuerte > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Guardado caja fuerte</span>
-                <span className="font-bold text-yellow-700">− {formatCurrency(totalCajaFuerte)}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Caja calculation */}
-          <div className="bg-brand-blue text-white rounded-xl p-4 text-sm">
-            <div className="space-y-1 opacity-80">
-              <div className="flex justify-between">
-                <span>Saldo inicial</span><span>{formatCurrency(saldoInicial)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>+ Efectivo del día</span><span>{formatCurrency(ventasEfectivo + ingresosEfectivo)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>− Gastos efectivo</span><span>{formatCurrency(gastosEfectivo)}</span>
-              </div>
-              {totalCajaFuerte > 0 && (
-                <div className="flex justify-between">
-                  <span>− Caja fuerte</span><span>{formatCurrency(totalCajaFuerte)}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex justify-between text-base font-black border-t border-white/30 pt-2 mt-2">
-              <span>DEBE HABER EN CAJA</span>
-              <span>{formatCurrency(debeHaberEnCaja)}</span>
-            </div>
-          </div>
-
-          {/* Efectivo contado */}
-          <div>
-            <label className="label">Efectivo contado físicamente en caja</label>
-            <input
-              type="number"
-              value={efectivoContado}
-              onChange={(e) => setEfectivoContado(e.target.value)}
-              className="input text-lg font-bold"
-              placeholder={String(Math.round(debeHaberEnCaja))}
-            />
-            {efectivoContado && (
-              <div
-                className={`mt-2 flex items-center gap-1.5 text-sm font-semibold ${
-                  diferenciaCaja === 0
-                    ? "text-green-600"
-                    : diferenciaCaja > 0
-                    ? "text-blue-600"
-                    : "text-red-600"
-                }`}
-              >
-                <AlertCircle className="w-4 h-4" />
-                {diferenciaCaja === 0
-                  ? "¡Perfecto! Cuadra exacto"
-                  : diferenciaCaja > 0
-                  ? `Hay ${formatCurrency(diferenciaCaja)} de más`
-                  : `Falta ${formatCurrency(Math.abs(diferenciaCaja))}`}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-800">
-            ⚠️ Al cerrar caja se actualizará el inventario con todas las ventas del día y se generará el reporte automáticamente.
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="secondary" onClick={() => setModalCerrar(false)}>
-              Cancelar
-            </Button>
-            <Button variant="danger" onClick={cerrarCaja} loading={loadingCerrar}>
-              <Lock className="w-4 h-4" /> Confirmar Cierre
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Historial Detalle Modal */}
-      {historialDetalle && (
-        <Modal
-          open
-          onClose={() => setHistorialDetalle(null)}
-          title={`Cierre ${formatDate(historialDetalle.caja.fecha)}`}
-          size="lg"
-        >
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto mb-4">
-            {historialDetalle.registros.length === 0 ? (
-              <p className="text-center text-gray-400 py-6">Sin registros para este día</p>
-            ) : (
-              historialDetalle.registros.map((r, i) => (
-                <div
-                  key={i}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm ${TIPO_ROW[r.tipo]}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${TIPO_BADGE[r.tipo]}`}>
-                      {TIPO_LABEL[r.tipo]}
-                    </span>
-                    <span className="font-medium text-gray-900">{r.descripcion}</span>
-                    {r.tallaNombre && (
-                      <span className="text-gray-400 text-xs">· {r.tallaNombre}</span>
-                    )}
-                  </div>
-                  <span className="font-bold text-gray-900">{formatCurrency(r.valor)}</span>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Summary footer */}
-          <div className="bg-gray-50 rounded-xl p-3 text-sm space-y-1 mb-4">
+      {/* ── TAB HOY ──────────────────────────────────────────── */}
+      {tab === "hoy" && (
+        <>
+          {/* Resumen */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {[
-              ["Total ventas", historialDetalle.caja.total_efectivo + (historialDetalle.caja.total_transferencias ?? 0), "text-gray-900"],
-              ["Total gastos", historialDetalle.caja.total_gastos ?? 0, "text-red-600"],
-              ["Saldo final", historialDetalle.caja.saldo_final, "text-brand-blue font-black"],
-            ].map(([lbl, val, cls]) => (
-              <div key={String(lbl)} className="flex justify-between">
-                <span className="text-gray-600">{String(lbl)}</span>
-                <span className={`font-bold ${String(cls)}`}>{formatCurrency(Number(val))}</span>
+              { label: "Ventas", value: totalVentas, color: "text-green-600", bg: "bg-green-50" },
+              { label: "Efectivo", value: ventasEfectivo, color: "text-emerald-700", bg: "bg-emerald-50" },
+              { label: "Transferencias", value: ventasTransferencia, color: "text-blue-600", bg: "bg-blue-50" },
+              { label: "Comisiones", value: comisiones, color: "text-violet-600", bg: "bg-violet-50" },
+            ].map(item => (
+              <div key={item.label} className={`${item.bg} rounded-2xl p-4`}>
+                <p className="text-xs text-gray-500 mb-1">{item.label}</p>
+                <p className={`text-lg font-black ${item.color}`}>{formatCurrency(item.value)}</p>
               </div>
             ))}
           </div>
 
-          <Button
-            className="w-full"
-            onClick={() =>
-              descargarReporte({
-                registros: historialDetalle.registros,
-                saldoInicial: historialDetalle.caja.saldo_inicial,
-                fecha: historialDetalle.caja.fecha,
-                efectivoContado: historialDetalle.caja.efectivo_contado ?? historialDetalle.caja.saldo_final,
+          {/* Saldo en caja */}
+          <div className="card bg-brand-blue text-white mb-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-blue-200 text-sm">Debe haber en caja</p>
+                <p className="text-3xl font-black">{formatCurrency(debeHaberEnCaja)}</p>
+                <p className="text-blue-200 text-xs mt-1">Saldo inicial: {formatCurrency(saldoInicial)}</p>
+              </div>
+              {cajaEstado === "cerrada" ? (
+                <div className="flex flex-col items-center gap-1">
+                  <CheckCircle className="w-8 h-8 text-green-300" />
+                  <span className="text-xs text-green-300 font-semibold">Cerrada</span>
+                </div>
+              ) : (
+                <Lock className="w-8 h-8 text-blue-300 opacity-40" />
+              )}
+            </div>
+          </div>
+
+          {/* Botones de acción */}
+          {cajaEstado === "abierta" && (
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <button onClick={() => setModalVenta(true)}
+                className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-3.5 rounded-2xl transition-colors active:scale-95">
+                <ShoppingBag className="w-5 h-5" /> Venta
+              </button>
+              <button onClick={() => setModalGasto(true)}
+                className="flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-2xl transition-colors active:scale-95">
+                <TrendingDown className="w-5 h-5" /> Gasto
+              </button>
+              <button onClick={() => setModalIngreso(true)}
+                className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3.5 rounded-2xl transition-colors active:scale-95">
+                <TrendingUp className="w-5 h-5" /> Ingreso
+              </button>
+              <button onClick={() => setModalCajaFuerte(true)}
+                className="flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-bold py-3.5 rounded-2xl transition-colors active:scale-95">
+                <Shield className="w-5 h-5" /> Guardar
+              </button>
+              <button onClick={() => setModalRetiro(true)}
+                className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 rounded-2xl transition-colors active:scale-95">
+                <Shield className="w-5 h-5" /> Retirar
+              </button>
+            </div>
+          )}
+
+          {/* Lista de registros */}
+          <div className="space-y-2 mb-6">
+            {registros.length === 0 ? (
+              <div className="card text-center py-12 text-gray-400">
+                <LayoutDashboard className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                <p className="font-medium">Sin movimientos hoy</p>
+                <p className="text-sm mt-1 opacity-70">Los registros del día aparecerán aquí</p>
+              </div>
+            ) : (
+              [...registros].reverse().map(r => {
+                const esRetiro = r.tipo === "caja_fuerte" && r.valor < 0;
+                const esPositivo = r.tipo === "venta" || r.tipo === "ingreso";
+                const colorValor = r.tipo === "venta" || r.tipo === "ingreso" ? "text-green-600"
+                  : esRetiro ? "text-orange-600"
+                  : r.tipo === "caja_fuerte" ? "text-amber-700"
+                  : "text-red-600";
+
+                if (r.tipo === "venta") {
+                  const pagoColor =
+                    r.metodoPago === "efectivo"      ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    r.metodoPago === "transferencia" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                                       "bg-purple-50 text-purple-700 border-purple-200";
+                  const pagoLabel =
+                    r.metodoPago === "efectivo"      ? "Efe" :
+                    r.metodoPago === "transferencia" ? "Transf" : "Mixto";
+                  return (
+                    <div key={r.id} className={`${getTipoRow(r.tipo, r.valor)} rounded-xl overflow-hidden ${r.pending ? "opacity-60" : ""}`}>
+                      <div className="grid grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem] items-center px-3 py-2.5">
+                        <span className="text-sm font-black text-gray-700 text-center">{r.cantidad}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef ?? "Producto"}</p>
+                          <p className="text-[10px] text-gray-400 leading-tight">{r.hora.slice(0, 5)}{r.pending && " · pendiente"}</p>
+                        </div>
+                        <span className="text-xs text-gray-500 text-center">{r.tallaNombre ?? "—"}</span>
+                        <span className="text-sm font-black text-green-600 text-right">+{formatCurrency(r.valor)}</span>
+                        <div className="flex justify-center">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${pagoColor}`}>{pagoLabel}</span>
+                        </div>
+                      </div>
+                      {cajaEstado === "abierta" && (
+                        <button onClick={() => setDeleteId(r.id)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-white/60 text-gray-300 hover:text-red-500 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={r.id} className={`${getTipoRow(r.tipo, r.valor)} rounded-xl px-4 py-3 flex items-center justify-between ${r.pending ? "opacity-60" : ""}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${getTipoBadge(r.tipo, r.valor)}`}>
+                          {getTipoLabel(r.tipo, r.valor)}
+                        </span>
+                        {r.pending && <span className="text-xs text-orange-500 font-medium">• pendiente</span>}
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{r.descripcion}</p>
+                      <p className="text-xs text-gray-400">{r.hora.slice(0, 5)}</p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-3">
+                      <p className={`text-base font-black ${colorValor}`}>
+                        {esPositivo ? "+" : "−"}{formatCurrency(Math.abs(r.valor))}
+                      </p>
+                      {cajaEstado === "abierta" && (
+                        <button onClick={() => setDeleteId(r.id)}
+                          className="p-1.5 rounded-lg hover:bg-white/60 text-gray-400 hover:text-red-500 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
               })
-            }
-            loading={generandoReporte}
-          >
-            <Download className="w-4 h-4" /> Descargar Reporte PNG
-          </Button>
+            )}
+          </div>
+
+          {/* Acciones de cierre */}
+          {cajaEstado === "abierta" && isAdmin && registros.length > 0 && (
+            <button onClick={() => setModalCerrar(true)}
+              className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-gray-800 text-white font-bold py-4 rounded-2xl transition-colors">
+              <Lock className="w-5 h-5" /> Cerrar Caja
+            </button>
+          )}
+          {cajaEstado === "cerrada" && isAdmin && (
+            <div className="space-y-3">
+              <button onClick={() => descargarReporte({ registros, saldoInicial, fecha: hoy, efectivoContado: efectivoContadoNum || debeHaberEnCaja })}
+                className="w-full flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-colors">
+                <Download className="w-5 h-5" /> Descargar Reporte
+              </button>
+              <button onClick={reabrirCaja}
+                className="w-full flex items-center justify-center gap-2 bg-white border-2 border-gray-200 hover:border-gray-300 text-gray-700 font-bold py-3 rounded-2xl transition-colors">
+                Reabrir Caja
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── TAB HISTORIAL ─────────────────────────────────────── */}
+      {tab === "historial" && (
+        <HistorialTab
+          historial={historial}
+          onDescargar={descargarHistorial}
+        />
+      )}
+
+      {/* ── MODALS ────────────────────────────────────────────── */}
+      {modalVenta && <ModalVenta onClose={() => setModalVenta(false)} onSave={agregarRegistro} />}
+      {modalGasto && <ModalGasto onClose={() => setModalGasto(false)} onSave={agregarRegistro} />}
+      {modalIngreso && <ModalIngreso onClose={() => setModalIngreso(false)} onSave={agregarRegistro} />}
+      {modalCajaFuerte && <ModalCajaFuerte onClose={() => setModalCajaFuerte(false)} onSave={agregarRegistro} modo="guardar" />}
+      {modalRetiro && <ModalCajaFuerte onClose={() => setModalRetiro(false)} onSave={agregarRegistro} modo="retirar" />}
+
+      {/* Modal confirmar cierre */}
+      {modalCerrar && (
+        <Modal open onClose={() => setModalCerrar(false)} title="Cerrar Caja">
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Ventas del día</span><span className="font-bold text-green-600">{formatCurrency(totalVentas)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Gastos</span><span className="font-bold text-red-600">- {formatCurrency(totalGastos)}</span></div>
+              {totalIngresos > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">Ingresos extra</span><span className="font-bold text-blue-600">+ {formatCurrency(totalIngresos)}</span></div>}
+              {totalGuardado > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">Guardado</span><span className="font-bold text-amber-600">− {formatCurrency(totalGuardado)}</span></div>}
+              <div className="border-t pt-2 flex justify-between"><span className="font-bold text-gray-900">Debe haber en caja</span><span className="font-black text-brand-blue text-lg">{formatCurrency(debeHaberEnCaja)}</span></div>
+            </div>
+            <div>
+              <label className="label">Efectivo contado (opcional)</label>
+              <input type="number" value={efectivoContado} onChange={e => setEfectivoContado(e.target.value)}
+                className="input" placeholder={String(Math.round(debeHaberEnCaja))} />
+              {efectivoContado && diferenciaCaja !== 0 && (
+                <p className={`text-sm mt-2 font-semibold ${diferenciaCaja > 0 ? "text-green-600" : "text-red-600"}`}>
+                  Diferencia: {diferenciaCaja > 0 ? "+" : ""}{formatCurrency(diferenciaCaja)}
+                </p>
+              )}
+            </div>
+            <Button className="w-full" size="lg" onClick={cerrarCaja} loading={loadingCerrar}>
+              <Lock className="w-5 h-5" /> Confirmar Cierre
+            </Button>
+          </div>
         </Modal>
       )}
+
+      {/* Modal confirmar eliminación */}
+      {deleteId && (
+        <Modal open onClose={() => setDeleteId(null)} title="Eliminar registro">
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">¿Eliminar este registro? Si es una venta, el stock se restaurará automáticamente.</p>
+            <div className="flex gap-3">
+              <Button variant="secondary" className="flex-1" onClick={() => setDeleteId(null)}>Cancelar</Button>
+              <Button variant="danger" className="flex-1" onClick={() => eliminarRegistro(deleteId)}>
+                <Trash2 className="w-4 h-4" /> Eliminar
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
     </div>
   );
 }

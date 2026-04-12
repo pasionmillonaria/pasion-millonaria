@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Producto, Categoria, Linea } from "@/lib/types";
+import type { Producto } from "@/lib/types";
 
 interface ProductoConInfo extends Producto {
   categoria_nombre: string;
@@ -42,30 +42,32 @@ export default function BuscadorProducto({ onSelect, placeholder = "Buscar produ
 
     const timer = setTimeout(async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("productos")
-        .select(`
-          *,
-          categorias (
-            nombre,
-            lineas (nombre)
-          )
-        `)
-        .eq("activo", true)
-        .or(`referencia.ilike.%${query}%,codigo.ilike.%${query}%`)
-        .limit(8);
+      try {
+        const { data, error } = await supabase
+          .from("productos")
+          .select(`*, categorias(nombre), lineas(nombre)`)
+          .eq("activo", true)
+          .or(`referencia.ilike.%${query}%,codigo.ilike.%${query}%`)
+          .limit(8);
 
-      if (data) {
-        const mapped: ProductoConInfo[] = data.map((p: any) => ({
-          ...p,
-          categoria_nombre: p.categorias?.nombre ?? "",
-          linea_nombre: p.categorias?.lineas?.nombre ?? "",
-          categorias: undefined,
-        }));
-        setResultados(mapped);
-        setOpen(true);
+        if (error) {
+          console.error("Error buscando productos:", error);
+        } else if (data) {
+          const mapped: ProductoConInfo[] = data.map((p: any) => ({
+            ...p,
+            categoria_nombre: p.categorias?.nombre ?? "",
+            linea_nombre: p.lineas?.nombre ?? "",
+            categorias: undefined,
+            lineas: undefined,
+          }));
+          setResultados(mapped);
+          setOpen(true);
+        }
+      } catch (err) {
+        console.error("Error fatal en búsqueda:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }, 300);
 
     return () => clearTimeout(timer);

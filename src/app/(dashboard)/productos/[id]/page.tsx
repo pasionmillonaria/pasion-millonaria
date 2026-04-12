@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, Save } from "lucide-react";
+import { ChevronLeft, Save, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Producto, Categoria, Linea, SistemaTalla } from "@/lib/types";
-import { formatCurrency } from "@/lib/utils";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 import toast from "react-hot-toast";
@@ -34,10 +33,15 @@ export default function EditarProductoPage() {
   const [categoriaId, setCategoriaId] = useState<number | null>(null);
   const [lineaId, setLineaId] = useState<number | null>(null);
 
+  // Nueva categoría inline
+  const [nuevaCatVisible, setNuevaCatVisible] = useState(false);
+  const [nuevaCatNombre, setNuevaCatNombre] = useState("");
+  const [guardandoCat, setGuardandoCat] = useState(false);
+
   useEffect(() => {
     async function load() {
       const [{ data: p }, { data: li }, { data: ca }] = await Promise.all([
-        supabase.from("productos").select("*, categorias(*, lineas(*))").eq("id", Number(id)).single(),
+        supabase.from("productos").select("*").eq("id", Number(id)).single(),
         supabase.from("lineas").select("*").order("orden"),
         supabase.from("categorias").select("*").order("orden"),
       ]);
@@ -47,7 +51,7 @@ export default function EditarProductoPage() {
         setPrecioBase(String(p.precio_base));
         setSistemaTalla(p.sistema_talla);
         setCategoriaId(p.categoria_id);
-        setLineaId((p as any).categorias?.lineas?.id ?? null);
+        setLineaId(p.linea_id);
       }
       setLineas(li ?? []);
       setCategorias(ca ?? []);
@@ -56,7 +60,29 @@ export default function EditarProductoPage() {
     load();
   }, [id]);
 
-  const categoriasFiltradas = lineaId ? categorias.filter(c => c.linea_id === lineaId) : categorias;
+  const categoriasFiltradas = categorias;
+
+  async function crearCategoria() {
+    const nombre = nuevaCatNombre.trim();
+    if (!nombre) return;
+    setGuardandoCat(true);
+    const { data, error } = await supabase
+      .from("categorias")
+      .insert({ nombre })
+      .select("*")
+      .single();
+    if (error) {
+      toast.error(error.message.includes("duplicate") ? "Esa categoría ya existe" : "Error al crear categoría");
+      setGuardandoCat(false);
+      return;
+    }
+    setCategorias(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setCategoriaId(data.id);
+    setNuevaCatNombre("");
+    setNuevaCatVisible(false);
+    setGuardandoCat(false);
+    toast.success(`Categoría "${data.nombre}" creada`);
+  }
 
   async function guardar() {
     if (!referencia.trim() || !precioBase || !categoriaId) {
@@ -68,6 +94,7 @@ export default function EditarProductoPage() {
       precio_base: parseFloat(precioBase),
       sistema_talla: sistemaTalla,
       categoria_id: categoriaId,
+      linea_id: lineaId ?? undefined,
     }).eq("id", Number(id));
 
     if (error) { toast.error("Error: " + error.message); setSaving(false); return; }
@@ -106,11 +133,42 @@ export default function EditarProductoPage() {
           </div>
         </div>
         <div>
-          <label className="label">Categoría *</label>
-          <select value={categoriaId ?? ""} onChange={e => setCategoriaId(Number(e.target.value) || null)} className="input">
-            <option value="">Seleccionar...</option>
-            {categoriasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
+          <div className="flex items-center justify-between mb-1">
+            <label className="label mb-0">Categoría <span className="text-red-500">*</span></label>
+            {!nuevaCatVisible && (
+              <button
+                onClick={() => setNuevaCatVisible(true)}
+                className="flex items-center gap-1 text-xs text-brand-blue font-medium hover:underline"
+              >
+                <Plus className="w-3 h-3" /> Nueva
+              </button>
+            )}
+          </div>
+          {nuevaCatVisible ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={nuevaCatNombre}
+                onChange={e => setNuevaCatNombre(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") crearCategoria(); if (e.key === "Escape") setNuevaCatVisible(false); }}
+                className="input flex-1"
+                placeholder="Nombre de la categoría..."
+                autoFocus
+              />
+              <Button size="sm" onClick={crearCategoria} loading={guardandoCat} disabled={!nuevaCatNombre.trim()}>
+                Crear
+              </Button>
+              <button onClick={() => { setNuevaCatVisible(false); setNuevaCatNombre(""); }}
+                className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <select value={categoriaId ?? ""} onChange={e => setCategoriaId(Number(e.target.value) || null)} className="input">
+              <option value="">Seleccionar...</option>
+              {categoriasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          )}
         </div>
         <div>
           <label className="label">Sistema de talla</label>

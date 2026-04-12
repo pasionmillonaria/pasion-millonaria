@@ -111,8 +111,6 @@ export default function NuevoApartadoPage() {
       producto_id: producto.id,
       talla_id: tallaId,
       precio: precioNum,
-      total_abonado: abonoNum,
-      estado: "pendiente",
       en_tienda: enTienda,
       observacion: observacion || null,
     }).select("id").single();

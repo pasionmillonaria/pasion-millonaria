@@ -47,12 +47,23 @@ export interface Database {
         Row: {
           id: string;
           nombre: string;
-          email: string;
+          pin: string | null;
           rol: Rol;
           activo: boolean;
         };
-        Insert: Omit<Database["public"]["Tables"]["usuarios"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["usuarios"]["Row"]>;
+        Insert: {
+          nombre: string;
+          pin?: string | null;
+          rol?: Rol;
+          activo?: boolean;
+        };
+        Update: {
+          nombre?: string;
+          pin?: string | null;
+          rol?: Rol;
+          activo?: boolean;
+        };
+        Relationships: [];
       };
       lineas: {
         Row: {
@@ -60,27 +71,50 @@ export interface Database {
           nombre: string;
           orden: number;
         };
-        Insert: Omit<Database["public"]["Tables"]["lineas"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["lineas"]["Row"]>;
+        Insert: {
+          nombre: string;
+          orden?: number;
+        };
+        Update: {
+          nombre?: string;
+          orden?: number;
+        };
+        Relationships: [];
       };
       categorias: {
         Row: {
           id: number;
           nombre: string;
-          linea_id: number;
           orden: number;
         };
-        Insert: Omit<Database["public"]["Tables"]["categorias"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["categorias"]["Row"]>;
+        Insert: {
+          nombre: string;
+          orden?: number;
+        };
+        Update: {
+          nombre?: string;
+          orden?: number;
+        };
+        Relationships: [];
       };
       tallas: {
         Row: {
           id: number;
           nombre: string;
           sistema: SistemaTalla;
+          orden: number;
         };
-        Insert: Omit<Database["public"]["Tables"]["tallas"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["tallas"]["Row"]>;
+        Insert: {
+          nombre: string;
+          sistema: SistemaTalla;
+          orden?: number;
+        };
+        Update: {
+          nombre?: string;
+          sistema?: SistemaTalla;
+          orden?: number;
+        };
+        Relationships: [];
       };
       ubicaciones: {
         Row: {
@@ -88,21 +122,46 @@ export interface Database {
           nombre: string;
           tipo: TipoUbicacion;
         };
-        Insert: Omit<Database["public"]["Tables"]["ubicaciones"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["ubicaciones"]["Row"]>;
+        Insert: {
+          nombre: string;
+          tipo: TipoUbicacion;
+        };
+        Update: {
+          nombre?: string;
+          tipo?: TipoUbicacion;
+        };
+        Relationships: [];
       };
       productos: {
         Row: {
           id: number;
           codigo: string;
           referencia: string;
+          linea_id: number;
           categoria_id: number;
           sistema_talla: SistemaTalla;
           precio_base: number;
           activo: boolean;
         };
-        Insert: Omit<Database["public"]["Tables"]["productos"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["productos"]["Row"]>;
+        Insert: {
+          codigo: string;
+          referencia: string;
+          linea_id: number;
+          categoria_id: number;
+          sistema_talla: SistemaTalla;
+          precio_base: number;
+          activo?: boolean;
+        };
+        Update: {
+          codigo?: string;
+          referencia?: string;
+          linea_id?: number;
+          categoria_id?: number;
+          sistema_talla?: SistemaTalla;
+          precio_base?: number;
+          activo?: boolean;
+        };
+        Relationships: [];
       };
       stock: {
         Row: {
@@ -112,8 +171,19 @@ export interface Database {
           ubicacion_id: number;
           cantidad: number;
         };
-        Insert: Omit<Database["public"]["Tables"]["stock"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["stock"]["Row"]>;
+        Insert: {
+          producto_id: number;
+          talla_id: number;
+          ubicacion_id: number;
+          cantidad?: number;
+        };
+        Update: {
+          producto_id?: number;
+          talla_id?: number;
+          ubicacion_id?: number;
+          cantidad?: number;
+        };
+        Relationships: [];
       };
       movimientos: {
         Row: {
@@ -122,6 +192,7 @@ export interface Database {
           producto_id: number;
           talla_id: number;
           ubicacion_id: number;
+          ubicacion_destino_id: number | null;
           cantidad: number;
           tipo: TipoMovimiento;
           canal: CanalMovimiento;
@@ -131,10 +202,41 @@ export interface Database {
           movimiento_ref: string | null;
           nota: string | null;
           usuario_id: string | null;
-          ubicacion_destino_id: number | null;
+          caja_diaria_id: number | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["movimientos"]["Row"], "id" | "fecha">;
-        Update: Partial<Database["public"]["Tables"]["movimientos"]["Row"]>;
+        Insert: {
+          producto_id: number;
+          talla_id: number;
+          ubicacion_id: number;
+          cantidad: number;
+          tipo: TipoMovimiento;
+          canal: CanalMovimiento;
+          ubicacion_destino_id?: number | null;
+          precio_venta?: number | null;
+          descuento?: number | null;
+          metodo_pago?: MetodoPago | null;
+          movimiento_ref?: string | null;
+          nota?: string | null;
+          usuario_id?: string | null;
+          caja_diaria_id?: number | null;
+        };
+        Update: {
+          producto_id?: number;
+          talla_id?: number;
+          ubicacion_id?: number;
+          cantidad?: number;
+          tipo?: TipoMovimiento;
+          canal?: CanalMovimiento;
+          ubicacion_destino_id?: number | null;
+          precio_venta?: number | null;
+          descuento?: number | null;
+          metodo_pago?: MetodoPago | null;
+          movimiento_ref?: string | null;
+          nota?: string | null;
+          usuario_id?: string | null;
+          caja_diaria_id?: number | null;
+        };
+        Relationships: [];
       };
       clientes: {
         Row: {
@@ -143,8 +245,17 @@ export interface Database {
           telefono: string | null;
           notas: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["clientes"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["clientes"]["Row"]>;
+        Insert: {
+          nombre: string;
+          telefono?: string | null;
+          notas?: string | null;
+        };
+        Update: {
+          nombre?: string;
+          telefono?: string | null;
+          notas?: string | null;
+        };
+        Relationships: [];
       };
       apartados: {
         Row: {
@@ -154,14 +265,32 @@ export interface Database {
           producto_id: number;
           talla_id: number;
           precio: number;
-          total_abonado: number;
-          saldo: number;
           estado: EstadoApartado;
           en_tienda: boolean;
           observacion: string | null;
+          usuario_id: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["apartados"]["Row"], "id" | "fecha" | "saldo">;
-        Update: Partial<Database["public"]["Tables"]["apartados"]["Row"]>;
+        Insert: {
+          cliente_id: number;
+          producto_id: number;
+          talla_id: number;
+          precio: number;
+          estado?: EstadoApartado;
+          en_tienda?: boolean;
+          observacion?: string | null;
+          usuario_id?: string | null;
+        };
+        Update: {
+          cliente_id?: number;
+          producto_id?: number;
+          talla_id?: number;
+          precio?: number;
+          estado?: EstadoApartado;
+          en_tienda?: boolean;
+          observacion?: string | null;
+          usuario_id?: string | null;
+        };
+        Relationships: [];
       };
       abonos: {
         Row: {
@@ -172,66 +301,129 @@ export interface Database {
           fecha: string;
           registrado_por: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["abonos"]["Row"], "id" | "fecha">;
-        Update: Partial<Database["public"]["Tables"]["abonos"]["Row"]>;
+        Insert: {
+          apartado_id: number;
+          monto: number;
+          metodo_pago: MetodoPago;
+          registrado_por?: string | null;
+        };
+        Update: {
+          apartado_id?: number;
+          monto?: number;
+          metodo_pago?: MetodoPago;
+          registrado_por?: string | null;
+        };
+        Relationships: [];
       };
       caja_diaria: {
         Row: {
           id: number;
           fecha: string;
           saldo_inicial: number;
-          total_efectivo: number;
-          total_transferencias: number;
-          total_datafono: number;
-          total_nequi: number;
-          total_descuentos: number;
-          total_devoluciones: number;
-          total_gastos: number;
-          total_ingresos_extra: number;
           guardado_caja_fuerte: number;
-          saldo_final: number;
-          cantidad_ventas: number;
           efectivo_contado: number | null;
           diferencia_caja: number | null;
           estado: EstadoCaja;
+          usuario_apertura: string | null;
+          usuario_cierre: string | null;
+          notas: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["caja_diaria"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["caja_diaria"]["Row"]>;
+        Insert: {
+          fecha: string;
+          saldo_inicial?: number;
+          guardado_caja_fuerte?: number;
+          efectivo_contado?: number | null;
+          diferencia_caja?: number | null;
+          estado?: EstadoCaja;
+          usuario_apertura?: string | null;
+          usuario_cierre?: string | null;
+          notas?: string | null;
+        };
+        Update: {
+          fecha?: string;
+          saldo_inicial?: number;
+          guardado_caja_fuerte?: number;
+          efectivo_contado?: number | null;
+          diferencia_caja?: number | null;
+          estado?: EstadoCaja;
+          usuario_apertura?: string | null;
+          usuario_cierre?: string | null;
+          notas?: string | null;
+        };
+        Relationships: [];
       };
       registros_caja: {
         Row: {
-          id: string;
+          id: number;
+          caja_diaria_id: number;
+          movimiento_id: number | null;
           fecha: string;
           hora: string;
           tipo: TipoRegistroCaja;
           descripcion: string | null;
-          producto_id: number | null;
-          talla_id: number | null;
-          cantidad: number;
           valor: number;
           metodo_pago: string | null;
           monto_efectivo: number;
           monto_transferencia: number;
-          caja_diaria_id: number | null;
           usuario_id: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["registros_caja"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["registros_caja"]["Row"]>;
+        Insert: {
+          caja_diaria_id: number;
+          movimiento_id?: number | null;
+          fecha: string;
+          hora?: string;
+          tipo: TipoRegistroCaja;
+          descripcion?: string | null;
+          valor: number;
+          metodo_pago?: string | null;
+          monto_efectivo?: number;
+          monto_transferencia?: number;
+          usuario_id?: string | null;
+        };
+        Update: {
+          caja_diaria_id?: number;
+          movimiento_id?: number | null;
+          fecha?: string;
+          hora?: string;
+          tipo?: TipoRegistroCaja;
+          descripcion?: string | null;
+          valor?: number;
+          metodo_pago?: string | null;
+          monto_efectivo?: number;
+          monto_transferencia?: number;
+          usuario_id?: string | null;
+        };
+        Relationships: [];
       };
       gastos: {
         Row: {
           id: number;
+          caja_diaria_id: number | null;
           fecha: string;
           concepto: string;
           monto: number;
           categoria: CategoriaGasto;
           metodo_pago: MetodoPago;
-          caja_diaria_id: number | null;
           registrado_por: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["gastos"]["Row"], "id" | "fecha">;
-        Update: Partial<Database["public"]["Tables"]["gastos"]["Row"]>;
+        Insert: {
+          caja_diaria_id?: number | null;
+          concepto: string;
+          monto: number;
+          categoria: CategoriaGasto;
+          metodo_pago: MetodoPago;
+          registrado_por?: string | null;
+        };
+        Update: {
+          caja_diaria_id?: number | null;
+          concepto?: string;
+          monto?: number;
+          categoria?: CategoriaGasto;
+          metodo_pago?: MetodoPago;
+          registrado_por?: string | null;
+        };
+        Relationships: [];
       };
     };
     Views: {
@@ -240,25 +432,34 @@ export interface Database {
           producto_id: number;
           codigo: string;
           referencia: string;
-          categoria: string;
+          linea_id: number;
           linea: string;
+          categoria: string;
           talla: string;
+          talla_id: number;
           sistema_talla: SistemaTalla;
           stock_tienda: number;
           stock_bodega: number;
           stock_total: number;
         };
+        Relationships: [];
       };
       v_stock_bajo: {
         Row: {
           producto_id: number;
           codigo: string;
           referencia: string;
-          categoria: string;
+          linea_id: number;
           linea: string;
+          categoria: string;
           talla: string;
+          talla_id: number;
+          sistema_talla: SistemaTalla;
+          stock_tienda: number;
+          stock_bodega: number;
           stock_total: number;
         };
+        Relationships: [];
       };
       v_ventas_hoy: {
         Row: {
@@ -274,6 +475,7 @@ export interface Database {
           metodo_pago: MetodoPago | null;
           usuario_id: string | null;
         };
+        Relationships: [];
       };
       v_apartados_pendientes: {
         Row: {
@@ -288,6 +490,7 @@ export interface Database {
           saldo: number;
           estado: EstadoApartado;
         };
+        Relationships: [];
       };
       v_resumen_caja_hoy: {
         Row: {
@@ -295,6 +498,26 @@ export interface Database {
           total: number;
           cantidad: number;
         };
+        Relationships: [];
+      };
+      v_resumen_caja: {
+        Row: {
+          id: number;
+          fecha: string;
+          saldo_inicial: number;
+          guardado_caja_fuerte: number;
+          efectivo_contado: number | null;
+          diferencia_caja: number | null;
+          estado: EstadoCaja;
+          notas: string | null;
+          total_efectivo: number;
+          total_transferencias: number;
+          total_gastos: number;
+          total_ingresos: number;
+          cantidad_ventas: number;
+          saldo_final: number;
+        };
+        Relationships: [];
       };
     };
     Functions: Record<string, never>;
@@ -322,3 +545,4 @@ export type VStockTotal = Database["public"]["Views"]["v_stock_total"]["Row"];
 export type VStockBajo = Database["public"]["Views"]["v_stock_bajo"]["Row"];
 export type VApartadosPendientes = Database["public"]["Views"]["v_apartados_pendientes"]["Row"];
 export type VResumenCajaHoy = Database["public"]["Views"]["v_resumen_caja_hoy"]["Row"];
+export type VResumenCaja = Database["public"]["Views"]["v_resumen_caja"]["Row"];

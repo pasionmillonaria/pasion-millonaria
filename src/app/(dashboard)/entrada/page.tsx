@@ -44,7 +44,7 @@ export default function EntradaPage() {
     const { data } = await supabase
       .from("tallas")
       .select("id, nombre")
-      .eq("sistema", p.sistema_talla)
+      .eq("sistema", p.sistema_talla as "ropa_adulto")
       .order("id");
 
     setTallasDisponibles(data ?? []);

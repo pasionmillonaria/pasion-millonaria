@@ -57,9 +57,11 @@ export default function InventarioPage() {
   const grupos: GrupoProducto[] = (() => {
     const mapa = new Map<number, GrupoProducto>();
     for (const row of stock) {
-      const cat = categorias.find(c => c.nombre === row.categoria);
-      if (lineaFiltro && (!cat || cat.linea_id !== lineaFiltro)) continue;
-      if (categoriaFiltro && (!cat || cat.id !== categoriaFiltro)) continue;
+      if (lineaFiltro && Number(row.linea_id) !== lineaFiltro) continue;
+      if (categoriaFiltro) {
+        const cat = categorias.find(c => c.id === categoriaFiltro);
+        if (!cat || cat.nombre !== row.categoria) continue;
+      }
       if (busqueda) {
         const q = busqueda.toLowerCase();
         if (!row.referencia.toLowerCase().includes(q) &&
@@ -82,8 +84,11 @@ export default function InventarioPage() {
     return Array.from(mapa.values());
   })();
 
+  // Categorías que tienen productos en la línea seleccionada (o todas si no hay filtro)
   const categoriasFiltradas = lineaFiltro
-    ? categorias.filter(c => c.linea_id === lineaFiltro)
+    ? categorias.filter(c =>
+        stock.some(r => Number(r.linea_id) === lineaFiltro && r.categoria === c.nombre)
+      )
     : categorias;
 
   return (

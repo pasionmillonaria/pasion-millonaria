@@ -29,15 +29,16 @@ export default function ProductosPage() {
     setLoading(true);
     const { data } = await supabase
       .from("productos")
-      .select(`*, categorias(nombre, lineas(nombre))`)
+      .select(`*, categorias(nombre), lineas(nombre)`)
       .order("id", { ascending: false });
 
     if (data) {
       setProductos(data.map((p: any) => ({
         ...p,
         categoria_nombre: p.categorias?.nombre ?? "",
-        linea_nombre: p.categorias?.lineas?.nombre ?? "",
+        linea_nombre: p.lineas?.nombre ?? "",
         categorias: undefined,
+        lineas: undefined,
       })));
     }
     setLoading(false);
