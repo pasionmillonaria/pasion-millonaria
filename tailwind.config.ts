@@ -10,16 +10,16 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          blue: "#003BC4",
-          "blue-light": "#1A52D1",
-          "blue-dark": "#002A9A",
-          gold: "#FFC926",
-          "gold-light": "#FFD94D",
-          "gold-dark": "#E6B000",
+          blue: "#1C3A8C",
+          "blue-light": "#2D4FA8",
+          "blue-dark": "#122B72",
+          gold: "#C49A2C",
+          "gold-light": "#D4AE44",
+          "gold-dark": "#A07E1E",
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["var(--font-outfit)", "system-ui", "sans-serif"],
       },
     },
   },

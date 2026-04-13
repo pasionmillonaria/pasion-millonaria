@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ShoppingBag, PackagePlus, Bookmark, ArrowLeftRight,
-  AlertTriangle, RefreshCw, ChevronRight, Eye, TrendingUp,
+  AlertTriangle, RefreshCw, ChevronRight, Eye, TrendingUp, LogOut,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -28,7 +28,13 @@ const accionesExtra = [
 
 export default function InicioPage() {
   const supabase = createClient();
-  const { profile, isAdmin } = useProfile();
+  const { profile, isAdmin, setProfile } = useProfile();
+  const router = useRouter();
+
+  function handleSalir() {
+    setProfile(null);
+    router.push("/");
+  }
 
   const [apartados, setApartados] = useState<VApartadosPendientes[]>([]);
   const [stockBajo, setStockBajo] = useState<VStockBajo[]>([]);
@@ -62,7 +68,7 @@ export default function InicioPage() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow"
-            style={{ backgroundColor: profile?.color ?? "#003366" }}>
+            style={{ backgroundColor: profile?.color ?? "#003BC4" }}>
             {profile?.emoji}
           </div>
           <div>
@@ -70,9 +76,18 @@ export default function InicioPage() {
             <p className="font-bold text-gray-900">{profile?.nombre}</p>
           </div>
         </div>
-        <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
-          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
+            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={handleSalir}
+            className="p-2 rounded-xl hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+            title="Cambiar perfil"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Banner ventas del día (admin) */}

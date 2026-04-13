@@ -4,8 +4,8 @@
   "description": "Sistema de inventario y punto de venta",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#003BC4",
-  "theme_color": "#003BC4",
+  "background_color": "#1C3A8C",
+  "theme_color": "#1C3A8C",
   "icons": [
     {
       "src": "/logo.webp",

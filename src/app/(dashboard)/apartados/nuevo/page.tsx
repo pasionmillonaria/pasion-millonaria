@@ -227,14 +227,15 @@ export default function NuevoApartadoPage() {
       }
     }
 
-    // Registrar abono inicial como una sola entrada contra el primer apartado (grupoId)
+    // Registrar abono inicial y vincularlo a la caja si está abierta
     if (abonoNum > 0 && grupoId) {
-      await supabase.from("abonos").insert({
+      const { error: abonoErr } = await supabase.from("abonos").insert({
         apartado_id: grupoId,
         monto: abonoNum,
         metodo_pago: metodoPago,
         registrado_por: null,
       });
+      if (abonoErr) { toast.error("Error al guardar abono: " + abonoErr.message); setLoading(false); return; }
 
       const hoy = new Date().toISOString().split("T")[0];
       const { data: cajaHoy } = await supabase
@@ -244,13 +245,18 @@ export default function NuevoApartadoPage() {
       if (cajaHoy) {
         const hora = new Date().toTimeString().slice(0, 8);
         const esEfectivo = metodoPago === "efectivo";
-        await supabase.from("registros_caja").insert({
+        const { error: cajaErr } = await supabase.from("registros_caja").insert({
           caja_diaria_id: cajaHoy.id, fecha: hoy, hora,
           tipo: "ingreso" as const,
           descripcion: `Abono inicial apartado #${grupoId} — ${clienteNombre.trim()}`,
           valor: abonoNum, metodo_pago: metodoPago,
           monto_efectivo: esEfectivo ? abonoNum : 0,
           monto_transferencia: !esEfectivo ? abonoNum : 0,
+        });
+        if (cajaErr) toast.error("Abono guardado, pero hubo un error al registrarlo en caja: " + cajaErr.message);
+      } else {
+        toast("Abono guardado, pero no hay caja abierta hoy — no aparecerá en el registro de caja", {
+          icon: "⚠️", duration: 5000,
         });
       }
     }

@@ -108,7 +108,7 @@ export default function HistorialDetallePage() {
   const totalCajaFuerte = cajaFuerteList.filter(r => r.valor > 0).reduce((s, r) => s + r.valor, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
   const comisiones = ventas
-    .filter(r => r.cantidad > 0 && r.valor / r.cantidad > 25000)
+    .filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000)
     .reduce((s, r) => s + r.cantidad * 1000, 0);
 
   return (
@@ -206,7 +206,7 @@ export default function HistorialDetallePage() {
                 <div className="grid grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem] gap-0 px-3 py-2 items-center">
                   <span className="text-sm font-black text-gray-700 text-center">{r.cantidad}</span>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef}</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef ?? r.descripcion ?? "Artículo"}</p>
                     <p className="text-[10px] text-gray-400 leading-tight">{r.hora.slice(0, 5)}</p>
                   </div>
                   <span className="text-xs text-gray-500 text-center font-medium">{r.tallaNombre ?? "—"}</span>
@@ -448,7 +448,7 @@ function ReporteImpresion({ caja, registros, ventasEfe, ventasTransf, totalCajaF
             return (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 3.5rem", padding: "6px 8px", background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6", alignItems: "center" }}>
                 <span style={{ textAlign: "center", fontWeight: 900, fontSize: 12 }}>{v.cantidad}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef ?? v.descripcion ?? "Artículo"}</span>
                 <span style={{ textAlign: "center", fontSize: 11, color: "#6b7280" }}>{v.tallaNombre ?? "—"}</span>
                 <span style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{formatCurrency(v.valor)}</span>
                 <div style={{ display: "flex", justifyContent: "center" }}>

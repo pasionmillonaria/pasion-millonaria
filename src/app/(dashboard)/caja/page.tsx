@@ -116,22 +116,43 @@ function ModalVenta({ onClose, onSave }: {
   onSave: (r: Omit<RegistroLocal, "id" | "fecha" | "hora">) => void;
 }) {
   const supabase = createClient();
+  const [modo, setModo] = useState<"inventario" | "libre">("inventario");
+
+  // Modo inventario
   const [paso, setPaso] = useState<"producto" | "talla" | "detalle">("producto");
   const [producto, setProducto] = useState<any>(null);
   const [tallas, setTallas] = useState<TallaStock[]>([]);
   const [tallaId, setTallaId] = useState<number | null>(null);
   const [tallaNombre, setTallaNombre] = useState("");
-  const [cantidad, setCantidad] = useState(1);
-  const [precio, setPrecio] = useState("");
+  const [cantidadInv, setCantidadInv] = useState(1);
+  const [precioInv, setPrecioInv] = useState("");
+
+  // Modo libre
+  const [descLibre, setDescLibre] = useState("");
+  const [cantidadLibre, setCantidadLibre] = useState(1);
+  const [precioLibre, setPrecioLibre] = useState("");
+
+  // Compartido
   const [metodo, setMetodo] = useState<"efectivo" | "transferencia" | "mixto">("efectivo");
   const [montoEfe, setMontoEfe] = useState(0);
   const [montoTransf, setMontoTransf] = useState(0);
 
-  const total = (parseFloat(precio) || 0) * cantidad;
+  const totalInv = (parseFloat(precioInv) || 0) * cantidadInv;
+  const totalLibre = (parseFloat(precioLibre) || 0) * cantidadLibre;
+  const total = modo === "inventario" ? totalInv : totalLibre;
+
+  const stockTallaActual = tallas.find(t => t.talla_id === tallaId)?.stock_tienda ?? 0;
+
+  useEffect(() => {
+    if (metodo === "efectivo") { setMontoEfe(total); setMontoTransf(0); }
+    else if (metodo === "transferencia") { setMontoTransf(total); setMontoEfe(0); }
+  }, [metodo, total]);
+
+  const mixtoValido = metodo !== "mixto" || Math.abs(montoEfe + montoTransf - total) < 1;
 
   async function handleSelectProducto(p: any) {
     setProducto(p);
-    setPrecio(String(p.precio_base));
+    setPrecioInv(String(p.precio_base));
     const { data: stockData } = await supabase
       .from("v_stock_total")
       .select("talla, talla_id, stock_tienda, stock_bodega")
@@ -150,138 +171,196 @@ function ModalVenta({ onClose, onSave }: {
   function handleSelectTalla(id: number) {
     setTallaId(id);
     setTallaNombre(tallas.find(t => t.talla_id === id)?.talla_nombre ?? "");
-    setCantidad(1);
+    setCantidadInv(1);
     setPaso("detalle");
   }
 
-  const stockTallaActual = tallas.find(t => t.talla_id === tallaId)?.stock_tienda ?? 0;
-
-  useEffect(() => {
-    if (metodo === "efectivo") { setMontoEfe(total); setMontoTransf(0); }
-    else if (metodo === "transferencia") { setMontoTransf(total); setMontoEfe(0); }
-  }, [metodo, total]);
-
-  const mixtoValido = metodo !== "mixto" || Math.abs(montoEfe + montoTransf - total) < 1;
-
-  function handleSave() {
-    if (!producto || !tallaId || total <= 0) return;
-    if (cantidad > stockTallaActual) { toast.error(`Solo hay ${stockTallaActual} unidad${stockTallaActual !== 1 ? "es" : ""} en tienda`); return; }
-    if (!mixtoValido) { toast.error(`Efectivo + Transferencia debe sumar ${formatCurrency(total)}`); return; }
+  function handleSaveInventario() {
+    if (!producto || !tallaId || totalInv <= 0) return;
+    if (cantidadInv > stockTallaActual) { toast.error(`Solo hay ${stockTallaActual} unidad${stockTallaActual !== 1 ? "es" : ""} en tienda`); return; }
+    if (!mixtoValido) { toast.error(`Efectivo + Transferencia debe sumar ${formatCurrency(totalInv)}`); return; }
     onSave({
       tipo: "venta",
       descripcion: producto.referencia,
       productoId: producto.id,
       productoRef: producto.referencia,
-      tallaId, tallaNombre, cantidad, valor: total,
+      tallaId, tallaNombre, cantidad: cantidadInv, valor: totalInv,
       metodoPago: metodo,
-      montoEfectivo: metodo === "efectivo" ? total : metodo === "mixto" ? montoEfe : 0,
-      montoTransferencia: metodo === "transferencia" ? total : metodo === "mixto" ? montoTransf : 0,
+      montoEfectivo: metodo === "efectivo" ? totalInv : metodo === "mixto" ? montoEfe : 0,
+      montoTransferencia: metodo === "transferencia" ? totalInv : metodo === "mixto" ? montoTransf : 0,
     });
     onClose();
   }
 
+  function handleSaveLibre() {
+    if (!descLibre.trim() || totalLibre <= 0) { toast.error("Completa descripción y precio"); return; }
+    if (!mixtoValido) { toast.error(`Efectivo + Transferencia debe sumar ${formatCurrency(totalLibre)}`); return; }
+    const desc = cantidadLibre > 1 ? `${descLibre.trim()} (x${cantidadLibre})` : descLibre.trim();
+    onSave({
+      tipo: "venta",
+      descripcion: desc,
+      productoId: null, productoRef: null, tallaId: null, tallaNombre: null,
+      cantidad: cantidadLibre, valor: totalLibre,
+      metodoPago: metodo,
+      montoEfectivo: metodo === "efectivo" ? totalLibre : metodo === "mixto" ? montoEfe : 0,
+      montoTransferencia: metodo === "transferencia" ? totalLibre : metodo === "mixto" ? montoTransf : 0,
+    });
+    onClose();
+  }
+
+  /* ── Bloque de pago compartido ── */
+  const BloquePago = (
+    <div className="space-y-4">
+      <div>
+        <label className="label">Método de pago</label>
+        <div className="grid grid-cols-3 gap-2">
+          {(["efectivo", "transferencia", "mixto"] as const).map(m => (
+            <button key={m} onClick={() => setMetodo(m)}
+              className={`py-2 px-3 rounded-xl text-sm font-medium capitalize transition-colors ${metodo === m ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>
+              {m === "efectivo" ? "Efectivo" : m === "transferencia" ? "Transferencia" : "Mixto"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {metodo === "mixto" && (
+        <div className="bg-gray-50 rounded-xl p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label text-green-700">Efectivo</label>
+              <InputDinero value={montoEfe}
+                onChange={raw => { const v = parseFloat(raw) || 0; setMontoEfe(v); setMontoTransf(total - v); }}
+                className="input font-bold text-green-700" />
+            </div>
+            <div>
+              <label className="label text-blue-700">Transferencia</label>
+              <InputDinero value={montoTransf}
+                onChange={raw => { const v = parseFloat(raw) || 0; setMontoTransf(v); setMontoEfe(total - v); }}
+                className="input font-bold text-blue-700" />
+            </div>
+          </div>
+          {!mixtoValido && (
+            <p className="text-xs text-red-500 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> La suma debe ser {formatCurrency(total)}
+            </p>
+          )}
+        </div>
+      )}
+      <div className="bg-brand-blue text-white rounded-xl p-4 flex justify-between items-center">
+        <span className="font-bold">Total</span>
+        <span className="text-2xl font-black">{formatCurrency(total)}</span>
+      </div>
+    </div>
+  );
+
   return (
     <Modal open onClose={onClose} title="Registrar Venta" size="3xl" panelClassName="min-h-[78vh] md:min-h-0">
-      <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start space-y-4 md:space-y-0">
 
-        {/* Columna izquierda: Producto + Talla */}
-        <div className="space-y-4">
-          <div>
-            <label className="label">Producto</label>
-            {producto ? (
-              <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-                <div>
-                  <p className="font-bold text-gray-900">{producto.referencia}</p>
-                  <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
+      {/* Selector de modo */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-4">
+        <button onClick={() => setModo("inventario")}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${modo === "inventario" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
+          Del inventario
+        </button>
+        <button onClick={() => setModo("libre")}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${modo === "libre" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
+          Artículo libre
+        </button>
+      </div>
+
+      {/* ── MODO INVENTARIO ── */}
+      {modo === "inventario" && (
+        <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start space-y-4 md:space-y-0">
+          <div className="space-y-4">
+            <div>
+              <label className="label">Producto</label>
+              {producto ? (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                  <div>
+                    <p className="font-bold text-gray-900">{producto.referencia}</p>
+                    <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
+                  </div>
+                  <button onClick={() => { setProducto(null); setTallaId(null); setTallas([]); setPaso("producto"); }}
+                    className="text-xs text-brand-blue font-medium">Cambiar</button>
                 </div>
-                <button onClick={() => { setProducto(null); setTallaId(null); setTallas([]); setPaso("producto"); }}
-                  className="text-xs text-brand-blue font-medium">Cambiar</button>
+              ) : (
+                <>
+                  <div className="md:hidden">
+                    <BuscadorProducto onSelect={handleSelectProducto} />
+                  </div>
+                  <div className="hidden md:block">
+                    <ListaProductos onSelect={handleSelectProducto} />
+                  </div>
+                </>
+              )}
+            </div>
+            {paso !== "producto" && tallas.length > 0 && (
+              <div>
+                <label className="label">Talla</label>
+                <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={handleSelectTalla} />
               </div>
-            ) : (
-              <>
-                {/* Mobile: dropdown */}
-                <div className="md:hidden">
-                  <BuscadorProducto onSelect={handleSelectProducto} />
-                </div>
-                {/* Desktop: lista inline */}
-                <div className="hidden md:block">
-                  <ListaProductos onSelect={handleSelectProducto} />
-                </div>
-              </>
             )}
           </div>
 
-          {paso !== "producto" && tallas.length > 0 && (
-            <div>
-              <label className="label">Talla</label>
-              <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={handleSelectTalla} />
+          {paso === "detalle" && tallaId && (
+            <div className="space-y-4">
+              <div>
+                <label className="label">Cantidad</label>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setCantidadInv(Math.max(1, cantidadInv - 1))}
+                    className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center">−</button>
+                  <span className="text-2xl font-bold w-8 text-center">{cantidadInv}</span>
+                  <button onClick={() => setCantidadInv(Math.min(stockTallaActual, cantidadInv + 1))}
+                    disabled={cantidadInv >= stockTallaActual}
+                    className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed">+</button>
+                </div>
+                {stockTallaActual > 0 && <p className="text-xs text-gray-400 mt-1">Stock disponible: {stockTallaActual} uds</p>}
+              </div>
+              <div>
+                <label className="label">Precio unitario</label>
+                <InputDinero value={precioInv} onChange={raw => setPrecioInv(raw)} className="input" placeholder="0" />
+              </div>
+              {BloquePago}
+              <Button className="w-full" onClick={handleSaveInventario} disabled={!mixtoValido || totalInv <= 0}>
+                Guardar Venta
+              </Button>
             </div>
           )}
         </div>
+      )}
 
-        {/* Columna derecha: Detalles (móvil: apilado, desktop: columna derecha) */}
-        {paso === "detalle" && tallaId && (
-          <div className="space-y-4">
-            <div>
-              <label className="label">Cantidad</label>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setCantidad(Math.max(1, cantidad - 1))}
-                  className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center">−</button>
-                <span className="text-2xl font-bold w-8 text-center">{cantidad}</span>
-                <button onClick={() => setCantidad(Math.min(stockTallaActual, cantidad + 1))}
-                  disabled={cantidad >= stockTallaActual}
-                  className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed">+</button>
-              </div>
-              {stockTallaActual > 0 && <p className="text-xs text-gray-400 mt-1">Stock disponible: {stockTallaActual} uds</p>}
-            </div>
+      {/* ── MODO LIBRE ── */}
+      {modo === "libre" && (
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+            Para llaveros, gorras, manillas, billeteras u otros artículos sin inventario.
+          </p>
+          <div>
+            <label className="label">Descripción del artículo</label>
+            <input type="text" value={descLibre} onChange={e => setDescLibre(e.target.value)}
+              className="input" placeholder="Ej: Llavero Millonarios, Manilla azul..." autoFocus />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Precio unitario</label>
-              <InputDinero value={precio} onChange={raw => setPrecio(raw)} className="input" placeholder="0" />
+              <InputDinero value={precioLibre} onChange={raw => setPrecioLibre(raw)} className="input" placeholder="0" />
             </div>
             <div>
-              <label className="label">Método de pago</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["efectivo", "transferencia", "mixto"] as const).map(m => (
-                  <button key={m} onClick={() => setMetodo(m)}
-                    className={`py-2 px-3 rounded-xl text-sm font-medium capitalize transition-colors ${metodo === m ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>
-                    {m === "efectivo" ? "Efectivo" : m === "transferencia" ? "Transferencia" : "Mixto"}
-                  </button>
-                ))}
+              <label className="label">Cantidad</label>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setCantidadLibre(Math.max(1, cantidadLibre - 1))}
+                  className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center">−</button>
+                <span className="text-2xl font-bold w-8 text-center">{cantidadLibre}</span>
+                <button onClick={() => setCantidadLibre(cantidadLibre + 1)}
+                  className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center">+</button>
               </div>
             </div>
-            {metodo === "mixto" && (
-              <div className="bg-gray-50 rounded-xl p-3 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label text-green-700">Efectivo</label>
-                    <InputDinero value={montoEfe}
-                      onChange={raw => { const v = parseFloat(raw) || 0; setMontoEfe(v); setMontoTransf(total - v); }}
-                      className="input font-bold text-green-700" />
-                  </div>
-                  <div>
-                    <label className="label text-blue-700">Transferencia</label>
-                    <InputDinero value={montoTransf}
-                      onChange={raw => { const v = parseFloat(raw) || 0; setMontoTransf(v); setMontoEfe(total - v); }}
-                      className="input font-bold text-blue-700" />
-                  </div>
-                </div>
-                {!mixtoValido && (
-                  <p className="text-xs text-red-500 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" /> La suma debe ser {formatCurrency(total)}
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="bg-brand-blue text-white rounded-xl p-4 flex justify-between items-center">
-              <span className="font-bold">Total</span>
-              <span className="text-2xl font-black">{formatCurrency(total)}</span>
-            </div>
-            <Button className="w-full" onClick={handleSave} disabled={!mixtoValido || total <= 0}>
-              Guardar Venta
-            </Button>
           </div>
-        )}
-      </div>
+          {BloquePago}
+          <Button className="w-full" onClick={handleSaveLibre} disabled={!mixtoValido || totalLibre <= 0 || !descLibre.trim()}>
+            Guardar Venta
+          </Button>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -526,7 +605,7 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
               <div key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 4rem", gap: 0, padding: "6px 8px", alignItems: "center" }}>
                   <span style={{ textAlign: "center", fontWeight: 900, fontSize: 12 }}>{v.cantidad}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef ?? v.descripcion ?? "Artículo"}</span>
                   <span style={{ textAlign: "center", fontSize: 11, color: "#6b7280" }}>{v.tallaNombre ?? "—"}</span>
                   <span style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{formatCurrency(v.valor)}</span>
                   <div style={{ display: "flex", justifyContent: "center" }}>
@@ -740,7 +819,7 @@ export default function CajaPage() {
   const totalVentas = ventas.reduce((s, r) => s + r.valor, 0);
   const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const comisiones = ventas
-    .filter(r => r.cantidad > 0 && r.valor / r.cantidad > 25000)
+    .filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000)
     .reduce((s, r) => s + r.cantidad * 1000, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
   // Lo que salió de la caja hacia el guardado
@@ -1194,7 +1273,7 @@ export default function CajaPage() {
               </button>
               <button onClick={() => setModalRetiro(true)}
                 className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 rounded-2xl transition-colors active:scale-95">
-                <Shield className="w-5 h-5" /> Retirar
+                <Shield className="w-5 h-5" /> Retirar(de guardado)
               </button>
             </div>
           )}
@@ -1229,7 +1308,7 @@ export default function CajaPage() {
                       <div className={`grid items-center px-3 py-2.5 ${cajaEstado === "abierta" ? "grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem_2rem]" : "grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem]"}`}>
                         <span className="text-sm font-black text-gray-700 text-center">{r.cantidad}</span>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef ?? "Producto"}</p>
+                          <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef ?? r.descripcion ?? "Artículo"}</p>
                           <p className="text-[10px] text-gray-400 leading-tight">{r.hora.slice(0, 5)}{r.pending && " · pendiente"}</p>
                         </div>
                         <span className="text-xs text-gray-500 text-center">{r.tallaNombre ?? "—"}</span>

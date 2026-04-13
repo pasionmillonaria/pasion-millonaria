@@ -66,7 +66,7 @@ function ProfileSelectScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-[#001E6E] flex flex-col items-center justify-center p-6 select-none">
+    <div className="min-h-screen bg-[#0F2260] flex flex-col items-center justify-center p-6 select-none">
       <Toaster position="top-center" />
 
       {/* Logo */}
@@ -115,7 +115,7 @@ function ProfileSelectScreen() {
       {/* Modal PIN */}
       {pinModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className={`w-full max-w-xs bg-[#001E6E] border border-white/20 rounded-t-3xl sm:rounded-3xl p-6
+          <div className={`w-full max-w-xs bg-[#0F2260] border border-white/20 rounded-t-3xl sm:rounded-3xl p-6
                           ${shake ? "animate-[shake_0.4s_ease-in-out]" : ""}`}>
 
             {/* Drag handle */}

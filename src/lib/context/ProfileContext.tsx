@@ -13,8 +13,8 @@ export interface Profile {
 }
 
 export const PERFILES: Profile[] = [
-  { key: "admin",  nombre: "Admin",      rol: "admin",    color: "#001E6E", emoji: "🏆" },
-  { key: "emp1",   nombre: "Empleados", rol: "empleado", color: "#001E6E", emoji: "⚽" }
+  { key: "admin",  nombre: "Admin",      rol: "admin",    color: "#1C3A8C", emoji: "🏆" },
+  { key: "emp1",   nombre: "Empleados", rol: "empleado", color: "#1C3A8C", emoji: "⚽" }
 ];
 
 interface ProfileContextType {

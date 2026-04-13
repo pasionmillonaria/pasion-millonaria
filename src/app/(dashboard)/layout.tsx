@@ -36,7 +36,7 @@ function DashboardGuard({ children }: { children: React.ReactNode }) {
         toastOptions={{
           duration: 3000,
           style: { borderRadius: "12px", fontWeight: "500", fontSize: "14px" },
-          success: { iconTheme: { primary: "#003BC4", secondary: "white" } },
+          success: { iconTheme: { primary: "#1C3A8C", secondary: "white" } },
         }}
       />
     </div>

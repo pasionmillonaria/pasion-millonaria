@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Search, Package, ChevronDown, ChevronUp, SlidersHorizontal, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { VStockTotal, Linea, Categoria } from "@/lib/types";
+import { formatCurrency } from "@/lib/utils";
 import Spinner from "@/components/ui/Spinner";
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
@@ -14,6 +15,7 @@ interface GrupoProducto {
   categoria: string;
   linea: string;
   linea_id: number;
+  precio_base: number;
   tallas: VStockTotal[];
   totalGeneral: number;
   totalTienda: number;
@@ -32,6 +34,7 @@ export default function InventarioPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [tallasDisponibles, setTallasDisponibles] = useState<TallaOpcion[]>([]);
   const [tallaOrden, setTallaOrden] = useState<Map<number, number>>(new Map());
+  const [precios, setPrecios] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(true);
 
   const [busqueda, setBusqueda] = useState("");
@@ -44,12 +47,16 @@ export default function InventarioPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: st }, { data: li }, { data: ca }, { data: tallas }] = await Promise.all([
+    const [{ data: st }, { data: li }, { data: ca }, { data: tallas }, { data: prods }] = await Promise.all([
       supabase.from("v_stock_total").select("*").order("referencia"),
       supabase.from("lineas").select("*").order("orden"),
       supabase.from("categorias").select("*").order("orden"),
       supabase.from("tallas").select("id, nombre, orden").order("orden"),
+      supabase.from("productos").select("id, precio_base").eq("activo", true),
     ]);
+    const precioMap = new Map<number, number>();
+    (prods ?? []).forEach((p: any) => precioMap.set(p.id, p.precio_base ?? 0));
+    setPrecios(precioMap);
     setStock(st ?? []);
     setLineas(li ?? []);
     setCategorias(ca ?? []);
@@ -91,6 +98,7 @@ export default function InventarioPage() {
           producto_id: row.producto_id, referencia: row.referencia,
           categoria: row.categoria, linea: row.linea,
           linea_id: Number(row.linea_id),
+          precio_base: precios.get(row.producto_id) ?? 0,
           tallas: [], totalGeneral: 0, totalTienda: 0, totalBodega: 0,
         });
       }
@@ -111,7 +119,7 @@ export default function InventarioPage() {
       return result.filter(g => g.tallas.some(t => t.talla_id === tallaFiltro));
     }
     return result;
-  }, [stock, lineaFiltro, categoriaFiltro, tallaFiltro, busqueda, tallaOrden]);
+  }, [stock, lineaFiltro, categoriaFiltro, tallaFiltro, busqueda, tallaOrden, precios]);
 
   // Categorías visibles según línea seleccionada
   const categoriasVisibles = useMemo(() =>
@@ -256,6 +264,7 @@ export default function InventarioPage() {
                   <tr>
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Referencia</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Línea / Categoría</th>
+                    <th className="text-right px-4 py-3 font-semibold text-gray-600">Precio</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Tallas</th>
                     <th className="text-center px-4 py-3 font-semibold text-gray-600">Tienda</th>
                     <th className="text-center px-4 py-3 font-semibold text-gray-600">Bodega</th>
@@ -271,6 +280,9 @@ export default function InventarioPage() {
                       <td className="px-4 py-3 text-gray-600">
                         <p>{g.linea}</p>
                         <p className="text-xs text-gray-400">{g.categoria}</p>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="font-semibold text-brand-blue">{formatCurrency(g.precio_base)}</span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
@@ -315,7 +327,10 @@ export default function InventarioPage() {
                   <button onClick={() => toggleExpand(g.producto_id)} className="w-full flex items-start gap-3 text-left">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-900">{g.referencia}</p>
-                      <p className="text-xs text-gray-500">{g.linea} · {g.categoria}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-gray-500">{g.linea} · {g.categoria}</p>
+                        <span className="text-xs font-semibold text-brand-blue">{formatCurrency(g.precio_base)}</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <Badge variant={g.totalGeneral === 0 ? "danger" : g.totalGeneral <= 4 ? "warning" : "success"}>

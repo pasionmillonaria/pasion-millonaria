@@ -28,7 +28,8 @@ const METODOS: { value: MetodoPago; label: string }[] = [
   { value: "datafono", label: "Datáfono" },
 ];
 
-async function cargarTallas(supabase: any, productoId: number): Promise<TallaStock[]> {
+// Para el producto que SE LLEVA el cliente: usa v_stock_total (necesita tener stock)
+async function cargarTallasConStock(supabase: any, productoId: number): Promise<TallaStock[]> {
   const { data } = await supabase.from("v_stock_total").select("talla, stock_tienda, stock_bodega").eq("producto_id", productoId);
   if (!data) return [];
   const names = data.map((d: any) => d.talla);
@@ -38,6 +39,23 @@ async function cargarTallas(supabase: any, productoId: number): Promise<TallaSto
     talla_nombre: d.talla,
     stock_tienda: d.stock_tienda ?? 0,
     stock_bodega: d.stock_bodega ?? 0,
+  }));
+}
+
+// Para el producto que DEVUELVE el cliente: consulta todas las tallas del sistema
+// (el cliente lo tiene, por eso el stock en tienda puede ser 0)
+async function cargarTodasTallas(supabase: any, sistemaTalla: string): Promise<TallaStock[]> {
+  const { data } = await supabase
+    .from("tallas")
+    .select("id, nombre")
+    .eq("sistema", sistemaTalla)
+    .order("orden");
+  if (!data) return [];
+  return data.map((t: any) => ({
+    talla_id:     t.id,
+    talla_nombre: t.nombre,
+    stock_tienda: 0,
+    stock_bodega: 0,
   }));
 }
 
@@ -72,15 +90,25 @@ export default function CambioPage() {
     }
     setLoading(true);
 
-    // Generar referencia compartida
+    // Referencia compartida para vincular ambos movimientos
     const ref = `CAM-${Date.now().toString().slice(-6)}`;
 
-    const { error } = await supabase.from("movimientos").insert([
+    // Buscar si hay caja abierta hoy (para registrar la diferencia en caja)
+    const hoy = new Date().toISOString().slice(0, 10);
+    const { data: cajaDiaria } = await supabase
+      .from("caja_diaria")
+      .select("id")
+      .eq("fecha", hoy)
+      .eq("estado", "abierta")
+      .maybeSingle();
+
+    const { data: movs, error } = await supabase.from("movimientos").insert([
       {
         producto_id: prodEntrada.id, talla_id: tallaEntradaId,
         ubicacion_id: 1, cantidad: 1, tipo: "devolucion", canal: "cambio",
         precio_venta: parseFloat(precioEntrada) || null,
         movimiento_ref: ref, usuario_id: null,
+        caja_diaria_id: cajaDiaria?.id ?? null,
       },
       {
         producto_id: prodSalida.id, talla_id: tallaSalidaId,
@@ -88,10 +116,30 @@ export default function CambioPage() {
         precio_venta: parseFloat(precioSalida) || null,
         metodo_pago: diferencia !== 0 ? metodoPago : null,
         movimiento_ref: ref, usuario_id: null,
+        caja_diaria_id: cajaDiaria?.id ?? null,
       },
-    ]);
+    ]).select("id");
 
     if (error) { toast.error("Error: " + error.message); setLoading(false); return; }
+
+    // Si hay diferencia positiva y hay caja abierta → agregar el cobro a la caja
+    if (diferencia > 0 && cajaDiaria && movs) {
+      const salidaMovId = movs[1]?.id ?? null;
+      const ahora = new Date();
+      await supabase.from("registros_caja").insert({
+        caja_diaria_id:      cajaDiaria.id,
+        movimiento_id:       salidaMovId,
+        fecha:               hoy,
+        hora:                ahora.toTimeString().slice(0, 5),
+        tipo:                "venta",
+        descripcion:         `Cambio: ${prodEntrada.referencia} → ${prodSalida.referencia}`,
+        valor:               diferencia,
+        metodo_pago:         metodoPago,
+        monto_efectivo:      metodoPago === "efectivo" ? diferencia : 0,
+        monto_transferencia: ["nequi", "transferencia", "datafono"].includes(metodoPago) ? diferencia : 0,
+      });
+    }
+
     toast.success("¡Cambio registrado!");
     setConfirmado(true);
     setLoading(false);
@@ -99,17 +147,34 @@ export default function CambioPage() {
 
   if (confirmado) {
     return (
-      <div className="max-w-2xl mx-auto px-4 md:px-8 pt-16 text-center">
+      <div className="max-w-md mx-auto px-4 md:px-8 pt-16 pb-24 text-center">
         <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <CheckCircle className="w-10 h-10 text-blue-600" />
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">¡Cambio registrado!</h2>
-        {diferencia > 0 && <p className="text-green-600 font-semibold mb-1">Cliente pagó: {formatCurrency(diferencia)}</p>}
-        {diferencia < 0 && <p className="text-red-600 font-semibold mb-1">Se devolvió al cliente: {formatCurrency(Math.abs(diferencia))}</p>}
-        {diferencia === 0 && <p className="text-gray-600 mb-1">Cambio exacto, sin diferencia</p>}
-        <div className="space-y-3 mt-8">
-          <Button className="w-full" onClick={() => { setProdEntrada(null); setProdSalida(null); setTallaEntradaId(null); setTallaSalidaId(null); setConfirmado(false); }}>Nuevo cambio</Button>
-          <Button variant="secondary" className="w-full" onClick={() => router.push("/")}>Ir al inicio</Button>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Cambio registrado!</h2>
+        <p className="text-gray-500 mb-4">{prodEntrada?.referencia} → {prodSalida?.referencia}</p>
+        {diferencia > 0 && (
+          <div className="bg-green-50 rounded-2xl px-4 py-3 mb-4">
+            <p className="text-green-700 font-semibold">Cobrado al cliente: {formatCurrency(diferencia)}</p>
+            <p className="text-green-600 text-sm mt-0.5">Diferencia agregada a la caja del día</p>
+          </div>
+        )}
+        {diferencia < 0 && (
+          <div className="bg-amber-50 rounded-2xl px-4 py-3 mb-4">
+            <p className="text-amber-700 font-semibold">Devolver al cliente: {formatCurrency(Math.abs(diferencia))}</p>
+          </div>
+        )}
+        {diferencia === 0 && <p className="text-gray-400 mb-4">Cambio sin diferencia de precio</p>}
+        <div className="space-y-3">
+          <Button className="w-full" onClick={() => {
+            setProdEntrada(null); setProdSalida(null);
+            setTallaEntradaId(null); setTallaSalidaId(null);
+            setPrecioEntrada(""); setPrecioSalida("");
+            setConfirmado(false);
+          }}>
+            Nuevo cambio
+          </Button>
+          <Button variant="secondary" className="w-full" onClick={() => router.push("/inicio")}>Ir al inicio</Button>
         </div>
       </div>
     );
@@ -137,11 +202,11 @@ export default function CambioPage() {
             <button onClick={() => { setProdEntrada(null); setTallaEntradaId(null); }} className="text-brand-blue text-sm">Cambiar</button>
           </div>
         ) : (
-          <ListaProductos onSelect={async p => { setProdEntrada(p); setPrecioEntrada(String(p.precio_base)); setTallasEntrada(await cargarTallas(supabase, p.id)); }} />
+          <ListaProductos onSelect={async p => { setProdEntrada(p); setPrecioEntrada(String(p.precio_base)); setTallasEntrada(await cargarTodasTallas(supabase, p.sistema_talla)); }} />
         )}
         {prodEntrada && tallasEntrada.length > 0 && (
           <>
-            <SelectorTalla tallas={tallasEntrada} seleccionada={tallaEntradaId} onSelect={setTallaEntradaId} />
+            <SelectorTalla tallas={tallasEntrada} seleccionada={tallaEntradaId} onSelect={setTallaEntradaId} permitirSinStock={true} />
             <div className="mt-3">
               <label className="label">Precio al que compró</label>
               <InputDinero value={precioEntrada} onChange={raw => setPrecioEntrada(raw)} className="input" />
@@ -163,7 +228,7 @@ export default function CambioPage() {
             <button onClick={() => { setProdSalida(null); setTallaSalidaId(null); }} className="text-brand-blue text-sm">Cambiar</button>
           </div>
         ) : (
-          <ListaProductos onSelect={async p => { setProdSalida(p); setPrecioSalida(String(p.precio_base)); setTallasSalida(await cargarTallas(supabase, p.id)); }} />
+          <ListaProductos onSelect={async p => { setProdSalida(p); setPrecioSalida(String(p.precio_base)); setTallasSalida(await cargarTallasConStock(supabase, p.id)); }} />
         )}
         {prodSalida && tallasSalida.length > 0 && (
           <>

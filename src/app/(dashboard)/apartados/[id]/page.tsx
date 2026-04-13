@@ -345,7 +345,7 @@ export default function ApartadoDetallePage() {
     if (cajaHoy) {
       const hora = new Date().toTimeString().slice(0, 8);
       const esEfectivo = metodoPagoAbono === "efectivo";
-      await supabase.from("registros_caja").insert({
+      const { error: cajaErr } = await supabase.from("registros_caja").insert({
         caja_diaria_id: cajaHoy.id, fecha: hoy, hora,
         tipo: "ingreso" as const,
         descripcion: `Abono apartado #${grupoId} — ${grupo.clienteNombre}`,
@@ -353,10 +353,18 @@ export default function ApartadoDetallePage() {
         monto_efectivo: esEfectivo ? monto : 0,
         monto_transferencia: !esEfectivo ? monto : 0,
       });
+      if (cajaErr) toast.error("Abono guardado, pero error al registrar en caja: " + cajaErr.message);
     }
 
     const nuevoSaldo = grupo.totalSaldo - monto;
-    toast.success(cajaHoy ? "¡Abono registrado y añadido a caja!" : "¡Abono registrado! (no hay caja abierta hoy)");
+    if (cajaHoy) {
+      toast.success("¡Abono registrado y añadido a caja!");
+    } else {
+      toast.success("¡Abono registrado!");
+      toast("No hay caja abierta hoy — el abono no aparecerá en el registro de caja", {
+        icon: "⚠️", duration: 5000,
+      });
+    }
     setModalAbono(false);
     setMontoAbono("");
     await cargarDatos();

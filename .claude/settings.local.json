@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc:*)",
-      "Bash(cmd /c \"cd /d C:\\\\Users\\\\PC\\\\pasion-millonaria && npx tsc --noEmit 2>&1\")"
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\PC\\\\pasion-millonaria && npx tsc --noEmit 2>&1\")",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npx --yes tsc --noEmit)"
     ]
   }
 }
