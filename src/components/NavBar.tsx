@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Home, Package, Bookmark, LayoutDashboard,
-  Box, LogOut, ChevronRight, BarChart2, History,
+  Box, LogOut, ChevronRight, BarChart2, History, UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -19,10 +19,9 @@ const navEmpleadoExtra = [
   { href: "/reportes",       label: "Reportes",  icon: BarChart2 },
 ];
 const navAdmin = [
-  { href: "/caja",           label: "Caja",      icon: LayoutDashboard },
-  { href: "/productos",      label: "Productos", icon: Box },
-  { href: "/caja/historial", label: "Historial", icon: History },
-  { href: "/reportes",       label: "Reportes",  icon: BarChart2 },
+  { href: "/caja",      label: "Caja",      icon: LayoutDashboard },
+  { href: "/productos", label: "Productos", icon: Box },
+  { href: "/reportes",  label: "Reportes",  icon: BarChart2 },
 ];
 
 export default function NavBar() {
@@ -128,6 +127,14 @@ export default function NavBar() {
             </Link>
           );
         })}
+        {/* Botón cambiar perfil */}
+        <button
+          onClick={handleSalir}
+          className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-gray-400 active:text-red-500 transition-colors"
+        >
+          <UserCircle className="w-5 h-5" strokeWidth={2} />
+          <span className="text-[10px] font-medium">Perfil</span>
+        </button>
       </div>
     </nav>
   );
