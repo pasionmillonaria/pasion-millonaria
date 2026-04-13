@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Search, Trash2, Save, AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import Button from "@/components/ui/Button";
+import InputDinero from "@/components/ui/InputDinero";
 
 interface Producto {
   id: number;
@@ -108,7 +109,6 @@ export default function ExcelRow({ onSave, onRemove, productos, tallas, loading 
                     className="w-full text-left px-3 py-2 hover:bg-brand-blue/5 text-sm flex justify-between"
                   >
                     <span>{p.referencia}</span>
-                    <span className="text-gray-400 text-xs">{p.codigo}</span>
                   </button>
                 ))}
               </div>
@@ -128,11 +128,10 @@ export default function ExcelRow({ onSave, onRemove, productos, tallas, loading 
         </select>
       </td>
       <td className="p-2 w-32">
-        <input 
-          type="number" 
-          value={total} 
-          onChange={e => {
-            const val = parseInt(e.target.value) || 0;
+        <InputDinero
+          value={total}
+          onChange={raw => {
+            const val = parseInt(raw) || 0;
             setTotal(val);
             setEfectivo(val);
             setTransferencia(0);
@@ -141,11 +140,10 @@ export default function ExcelRow({ onSave, onRemove, productos, tallas, loading 
         />
       </td>
       <td className="p-2 w-32">
-        <input 
-          type="number" 
-          value={transferencia} 
-          onChange={e => {
-            const val = parseInt(e.target.value) || 0;
+        <InputDinero
+          value={transferencia}
+          onChange={raw => {
+            const val = parseInt(raw) || 0;
             setTransferencia(val);
             setEfectivo(total - val);
           }}
@@ -153,11 +151,10 @@ export default function ExcelRow({ onSave, onRemove, productos, tallas, loading 
         />
       </td>
       <td className="p-2 w-32">
-        <input 
-          type="number" 
-          value={efectivo} 
-          onChange={e => {
-            const val = parseInt(e.target.value) || 0;
+        <InputDinero
+          value={efectivo}
+          onChange={raw => {
+            const val = parseInt(raw) || 0;
             setEfectivo(val);
             setTransferencia(total - val);
           }}

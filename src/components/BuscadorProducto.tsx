@@ -34,7 +34,7 @@ export default function BuscadorProducto({ onSelect, placeholder = "Buscar produ
   }, []);
 
   useEffect(() => {
-    if (!query.trim() || query.length < 2) {
+    if (!query.trim()) {
       setResultados([]);
       setOpen(false);
       return;
@@ -107,18 +107,26 @@ export default function BuscadorProducto({ onSelect, placeholder = "Buscar produ
             <div className="p-4 text-center text-sm text-gray-400">Buscando...</div>
           ) : resultados.length === 0 ? (
             <div className="p-4 text-center text-sm text-gray-400">Sin resultados</div>
+
           ) : (
             <div className="max-h-64 overflow-y-auto">
               {resultados.map(p => (
                 <button
                   key={p.id}
                   onClick={() => handleSelect(p)}
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0 active:bg-gray-100 transition-colors"
+                  className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0 active:bg-gray-100 transition-colors"
                 >
-                  <p className="font-semibold text-sm text-gray-900">{p.referencia}</p>
-                  <p className="text-xs text-gray-400">
-                    {p.codigo} · {p.linea_nombre} · {p.categoria_nombre}
-                  </p>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="font-semibold text-sm text-gray-900">{p.referencia}</p>
+                    {p.linea_nombre && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-brand-blue/10 text-brand-blue leading-none">
+                        {p.linea_nombre}
+                      </span>
+                    )}
+                  </div>
+                  {p.categoria_nombre && (
+                    <p className="text-xs text-gray-400">{p.categoria_nombre}</p>
+                  )}
                 </button>
               ))}
             </div>

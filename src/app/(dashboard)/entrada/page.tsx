@@ -6,7 +6,7 @@ import { CheckCircle, PackagePlus, ChevronLeft, Plus, Trash2 } from "lucide-reac
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
-import BuscadorProducto from "@/components/BuscadorProducto";
+import ListaProductos from "@/components/ListaProductos";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
 
@@ -78,6 +78,7 @@ export default function EntradaPage() {
   const totalUnidades = filas.reduce((s, f) => s + f.cantidad, 0);
 
   async function confirmarEntrada() {
+    if (loading) return;
     if (!producto || filas.length === 0) {
       toast.error("Agrega al menos una talla con cantidad");
       return;
@@ -138,7 +139,7 @@ export default function EntradaPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
+    <div className="max-w-5xl mx-auto px-4 md:px-8 pt-6">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100">
           <ChevronLeft className="w-6 h-6 text-gray-600" />
@@ -149,50 +150,54 @@ export default function EntradaPage() {
         </div>
       </div>
 
-      {/* Producto */}
-      <div className="card mb-4">
-        <h3 className="font-bold text-gray-700 mb-3">Producto</h3>
-        {producto ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">{producto.referencia}</p>
-              <p className="text-xs text-gray-500">{producto.codigo} · {producto.categoria_nombre}</p>
-            </div>
-            <button
-              onClick={() => { setProducto(null); setFilas([]); }}
-              className="text-brand-blue text-sm font-medium"
-            >
-              Cambiar
-            </button>
+      <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start">
+        {/* Columna izquierda: Producto */}
+        <div className="mb-4 md:mb-0">
+          <div className="card">
+            <h3 className="font-bold text-gray-700 mb-3">Producto</h3>
+            {producto ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-900">{producto.referencia}</p>
+                  <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
+                </div>
+                <button
+                  onClick={() => { setProducto(null); setFilas([]); }}
+                  className="text-brand-blue text-sm font-medium"
+                >
+                  Cambiar
+                </button>
+              </div>
+            ) : (
+              <ListaProductos onSelect={handleSelectProducto} />
+            )}
           </div>
-        ) : (
-          <BuscadorProducto onSelect={handleSelectProducto} />
-        )}
-      </div>
+        </div>
 
-      {producto && (
-        <>
-          {/* Ubicación destino */}
-          <div className="card mb-4">
-            <h3 className="font-bold text-gray-700 mb-3">Destino</h3>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setUbicacionId(1)}
-                className={`flex-1 py-3 rounded-xl font-medium transition-colors ${ubicacionId === 1 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
-              >
-                🏪 Tienda
-              </button>
-              <button
-                onClick={() => setUbicacionId(2)}
-                className={`flex-1 py-3 rounded-xl font-medium transition-colors ${ubicacionId === 2 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
-              >
-                📦 Bodega
-              </button>
+        {/* Columna derecha: Destino + Tallas + Submit */}
+        {producto && (
+          <div className="space-y-4">
+            {/* Ubicación destino */}
+            <div className="card">
+              <h3 className="font-bold text-gray-700 mb-3">Destino</h3>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setUbicacionId(1)}
+                  className={`flex-1 py-3 rounded-xl font-medium transition-colors ${ubicacionId === 1 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
+                >
+                  🏪 Tienda
+                </button>
+                <button
+                  onClick={() => setUbicacionId(2)}
+                  className={`flex-1 py-3 rounded-xl font-medium transition-colors ${ubicacionId === 2 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
+                >
+                  📦 Bodega
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Tallas */}
-          <div className="card mb-4">
+            {/* Tallas */}
+            <div className="card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-700">Tallas y cantidades</h3>
               <button
@@ -257,17 +262,18 @@ export default function EntradaPage() {
             )}
           </div>
 
-          <Button
-            className="w-full"
-            size="lg"
-            onClick={confirmarEntrada}
-            loading={loading}
-            disabled={filas.length === 0}
-          >
-            Confirmar Entrada ({totalUnidades} uds)
-          </Button>
-        </>
-      )}
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={confirmarEntrada}
+              loading={loading}
+              disabled={filas.length === 0}
+            >
+              Confirmar Entrada ({totalUnidades} uds)
+            </Button>
+          </div>
+        )}
+      </div>
 
       <div className="h-6" />
     </div>

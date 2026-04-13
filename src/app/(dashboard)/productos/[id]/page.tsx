@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Producto, Categoria, Linea, SistemaTalla } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
+import InputDinero from "@/components/ui/InputDinero";
 import toast from "react-hot-toast";
 
 const SISTEMAS: { value: SistemaTalla; label: string }[] = [
@@ -114,10 +115,6 @@ export default function EditarProductoPage() {
 
       <div className="card space-y-4">
         <div>
-          <label className="label">Código</label>
-          <input type="text" value={producto.codigo} disabled className="input bg-gray-50 text-gray-400" />
-        </div>
-        <div>
           <label className="label">Referencia *</label>
           <input type="text" value={referencia} onChange={e => setReferencia(e.target.value)} className="input" />
         </div>
@@ -183,7 +180,7 @@ export default function EditarProductoPage() {
         </div>
         <div>
           <label className="label">Precio base *</label>
-          <input type="number" value={precioBase} onChange={e => setPrecioBase(e.target.value)} className="input" />
+          <InputDinero value={precioBase} onChange={raw => setPrecioBase(raw)} className="input" />
         </div>
         <Button className="w-full" size="lg" onClick={guardar} loading={saving}>
           <Save className="w-5 h-5" /> Guardar Cambios

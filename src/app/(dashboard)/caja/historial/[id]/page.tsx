@@ -153,9 +153,9 @@ export default function HistorialDetallePage() {
         <div className="bg-sky-50 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-1">
             <Wallet className="w-4 h-4 text-sky-600" />
-            <p className="text-xs text-gray-500">En caja</p>
+            <p className="text-xs text-gray-500">En caja (contado)</p>
           </div>
-          <p className="text-xl font-black text-sky-700">{formatCurrency(caja.saldo_final ?? 0)}</p>
+          <p className="text-xl font-black text-sky-700">{formatCurrency(caja.efectivo_contado ?? 0)}</p>
           <p className="text-xs text-gray-400 mt-1">Inicial: {formatCurrency(caja.saldo_inicial ?? 0)}</p>
         </div>
         {comisiones > 0 && (
@@ -202,22 +202,27 @@ export default function HistorialDetallePage() {
               r.metodoPago === "efectivo"      ? "Efe" :
               r.metodoPago === "transferencia" ? "Transf" : "Mixto";
             return (
-              <div
-                key={i}
-                className="grid grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem] gap-0 px-3 py-2 border-b border-gray-50 last:border-0 items-center hover:bg-gray-50 transition-colors"
-              >
-                <span className="text-sm font-black text-gray-700 text-center">{r.cantidad}</span>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef}</p>
-                  <p className="text-[10px] text-gray-400 leading-tight">{r.hora.slice(0, 5)}</p>
+              <div key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                <div className="grid grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem] gap-0 px-3 py-2 items-center">
+                  <span className="text-sm font-black text-gray-700 text-center">{r.cantidad}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef}</p>
+                    <p className="text-[10px] text-gray-400 leading-tight">{r.hora.slice(0, 5)}</p>
+                  </div>
+                  <span className="text-xs text-gray-500 text-center font-medium">{r.tallaNombre ?? "—"}</span>
+                  <span className="text-sm font-black text-gray-900 text-right">{formatCurrency(r.valor)}</span>
+                  <div className="flex justify-center">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${pagoColor}`}>
+                      {pagoLabel}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-xs text-gray-500 text-center font-medium">{r.tallaNombre ?? "—"}</span>
-                <span className="text-sm font-black text-gray-900 text-right">{formatCurrency(r.valor)}</span>
-                <div className="flex justify-center">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${pagoColor}`}>
-                    {pagoLabel}
-                  </span>
-                </div>
+                {r.metodoPago === "mixto" && (
+                  <div className="px-3 pb-2 flex gap-3 text-[10px] font-semibold">
+                    <span className="text-emerald-600">Efe: {formatCurrency(r.montoEfectivo)}</span>
+                    <span className="text-blue-600">Transf: {formatCurrency(r.montoTransferencia)}</span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -358,7 +363,6 @@ function ReporteImpresion({ caja, registros, ventasEfe, ventasTransf, totalCajaF
   const totalVentas  = (caja.total_efectivo ?? 0) + (caja.total_transferencias ?? 0);
   const gastosEfe    = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   const ingresosEfe  = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const debeHaber    = (caja.saldo_inicial ?? 0) + ventasEfe + ingresosEfe - gastosEfe - totalCajaFuerte;
   const diferencia   = caja.diferencia_caja ?? 0;
 
   const kpiStyle = (bg: string): React.CSSProperties => ({
@@ -404,7 +408,7 @@ function ReporteImpresion({ caja, registros, ventasEfe, ventasTransf, totalCajaF
       <div style={{ display: "grid", gridTemplateColumns: comisiones > 0 ? "1fr 1fr" : "1fr", gap: 8, marginBottom: 8 }}>
         <div style={kpiStyle("#f0f9ff")}>
           <p style={kpiLabel}>En caja</p>
-          <p style={{ fontSize: 17, fontWeight: 900, color: "#0369a1", margin: 0 }}>{formatCurrency(caja.saldo_final ?? 0)}</p>
+          <p style={{ fontSize: 17, fontWeight: 900, color: "#0369a1", margin: 0 }}>{formatCurrency(caja.efectivo_contado ?? 0)}</p>
           <p style={{ fontSize: 10, color: "#94a3b8", margin: "3px 0 0" }}>Inicial: {formatCurrency(caja.saldo_inicial ?? 0)}</p>
         </div>
         {comisiones > 0 && (
@@ -523,7 +527,7 @@ function ReporteImpresion({ caja, registros, ventasEfe, ventasTransf, totalCajaF
           ))}
           <div style={{ borderTop: "1px solid #bfdbfe", paddingTop: 8, marginTop: 6, display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontWeight: 900, fontSize: 13, color: "#1d4ed8" }}>En caja</span>
-            <span style={{ fontWeight: 900, fontSize: 16, color: "#1d4ed8" }}>{formatCurrency(caja.saldo_final ?? 0)}</span>
+            <span style={{ fontWeight: 900, fontSize: 16, color: "#1d4ed8" }}>{formatCurrency(caja.efectivo_contado ?? 0)}</span>
           </div>
           {diferencia !== 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, color: diferencia > 0 ? "#059669" : "#dc2626" }}>

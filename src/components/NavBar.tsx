@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Home, Package, Bookmark, LayoutDashboard,
-  Box, LogOut, ChevronRight, BarChart2,
+  Box, LogOut, ChevronRight, BarChart2, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -14,10 +14,15 @@ const navBase = [
   { href: "/inventario", label: "Inventario",  icon: Package },
   { href: "/apartados",  label: "Apartados",   icon: Bookmark },
 ];
+const navEmpleadoExtra = [
+  { href: "/caja/historial", label: "Historial", icon: History },
+  { href: "/reportes",       label: "Reportes",  icon: BarChart2 },
+];
 const navAdmin = [
-  { href: "/caja",      label: "Caja",      icon: LayoutDashboard },
-  { href: "/productos", label: "Productos", icon: Box },
-  { href: "/reportes",  label: "Reportes",  icon: BarChart2 },
+  { href: "/caja",           label: "Caja",      icon: LayoutDashboard },
+  { href: "/productos",      label: "Productos", icon: Box },
+  { href: "/caja/historial", label: "Historial", icon: History },
+  { href: "/reportes",       label: "Reportes",  icon: BarChart2 },
 ];
 
 export default function NavBar() {
@@ -25,7 +30,7 @@ export default function NavBar() {
   const router = useRouter();
   const { isAdmin, profile, setProfile } = useProfile();
 
-  const items = isAdmin ? [...navBase, ...navAdmin] : navBase;
+  const items = isAdmin ? [...navBase, ...navAdmin] : [...navBase, ...navEmpleadoExtra];
 
   function handleSalir() {
     setProfile(null);
@@ -33,9 +38,10 @@ export default function NavBar() {
   }
 
   function isActive(href: string) {
-    return href === "/inicio"
-      ? pathname === "/inicio"
-      : pathname.startsWith(href);
+    if (href === "/inicio") return pathname === "/inicio";
+    if (href === "/caja") return pathname === "/caja";
+    if (href === "/caja/historial") return pathname.startsWith("/caja/historial");
+    return pathname.startsWith(href);
   }
 
   /* ─── SIDEBAR (md+) ─── */
@@ -43,9 +49,7 @@ export default function NavBar() {
     <aside className="hidden md:flex flex-col fixed inset-y-0 left-0 w-60 bg-brand-blue z-40 shadow-xl">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-        <div className="w-10 h-10 bg-brand-gold rounded-xl flex items-center justify-center shrink-0 shadow">
-          <span className="text-white font-black text-base">PM</span>
-        </div>
+        <img src="/logo.webp" alt="Pasión Millonaria" className="w-10 h-10 rounded-xl object-contain shrink-0 shadow bg-white" />
         <div>
           <p className="text-white font-bold text-sm leading-tight">Pasión Millonaria</p>
           <p className="text-blue-300 text-xs">POS & Inventario</p>

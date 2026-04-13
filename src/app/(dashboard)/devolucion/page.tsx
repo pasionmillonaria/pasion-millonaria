@@ -6,7 +6,8 @@ import { RefreshCw, CheckCircle, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
-import BuscadorProducto from "@/components/BuscadorProducto";
+import InputDinero from "@/components/ui/InputDinero";
+import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
@@ -62,6 +63,7 @@ export default function DevolucionPage() {
   }
 
   async function confirmar() {
+    if (loading) return;
     if (!producto || !tallaId) return;
     setLoading(true);
 
@@ -101,93 +103,97 @@ export default function DevolucionPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
+    <div className="max-w-5xl mx-auto px-4 md:px-8 pt-6">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100"><ChevronLeft className="w-6 h-6 text-gray-600" /></button>
         <RefreshCw className="w-6 h-6 text-orange-600" />
         <h1 className="text-xl font-bold text-gray-900">Devolución</h1>
       </div>
 
-      <div className="card mb-4">
-        <h3 className="font-bold text-gray-700 mb-3">Producto devuelto</h3>
-        {producto ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">{producto.referencia}</p>
-              <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
-            </div>
-            <button onClick={() => { setProducto(null); setTallaId(null); }} className="text-brand-blue text-sm font-medium">Cambiar</button>
+      <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start">
+        {/* Columna izquierda: Producto */}
+        <div className="mb-4 md:mb-0">
+          <div className="card">
+            <h3 className="font-bold text-gray-700 mb-3">Producto devuelto</h3>
+            {producto ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-900">{producto.referencia}</p>
+                  <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
+                </div>
+                <button onClick={() => { setProducto(null); setTallaId(null); }} className="text-brand-blue text-sm font-medium">Cambiar</button>
+              </div>
+            ) : (
+              <ListaProductos onSelect={handleSelectProducto} />
+            )}
           </div>
-        ) : (
-          <BuscadorProducto onSelect={handleSelectProducto} />
+        </div>
+
+        {/* Columna derecha: resto del flujo */}
+        {producto && tallas.length > 0 && (
+          <div className="space-y-4">
+            <div className="card">
+              <h3 className="font-bold text-gray-700 mb-3">Destino del retorno</h3>
+              <div className="flex gap-3">
+                <button onClick={() => setUbicacionId(1)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${ubicacionId === 1 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>🏪 Tienda</button>
+                <button onClick={() => setUbicacionId(2)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${ubicacionId === 2 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>📦 Bodega</button>
+              </div>
+            </div>
+
+            <div className="card">
+              <h3 className="font-bold text-gray-700 mb-3">Talla</h3>
+              <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={setTallaId} />
+            </div>
+
+            {tallaId && (
+              <>
+                <div className="card">
+                  <h3 className="font-bold text-gray-700 mb-3">Cantidad</h3>
+                  <div className="flex items-center gap-4 justify-center">
+                    <button onClick={() => setCantidad(Math.max(1, cantidad - 1))} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">-</button>
+                    <span className="text-3xl font-bold w-12 text-center">{cantidad}</span>
+                    <button onClick={() => setCantidad(cantidad + 1)} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">+</button>
+                  </div>
+                </div>
+
+                <div className="card space-y-4">
+                  <h3 className="font-bold text-gray-700">¿Se devuelve dinero al cliente?</h3>
+                  <div className="flex gap-3">
+                    <button onClick={() => setDevuelveDinero(true)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${devuelvedinero ? "bg-red-500 text-white" : "bg-gray-100 text-gray-600"}`}>Sí, devolver</button>
+                    <button onClick={() => setDevuelveDinero(false)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${!devuelvedinero ? "bg-gray-600 text-white" : "bg-gray-100 text-gray-600"}`}>No</button>
+                  </div>
+
+                  {devuelvedinero && (
+                    <>
+                      <div>
+                        <label className="label">Monto a devolver</label>
+                        <InputDinero value={monto} onChange={raw => setMonto(raw)} className="input" />
+                      </div>
+                      <div>
+                        <label className="label">Método</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {METODOS.map(m => (
+                            <button key={m.value} onClick={() => setMetodoPago(m.value)} className={`py-2 rounded-xl text-sm font-medium ${metodoPago === m.value ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>{m.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="label">Nota (opcional)</label>
+                    <input type="text" value={nota} onChange={e => setNota(e.target.value)} className="input" placeholder="Razón de la devolución..." />
+                  </div>
+                </div>
+
+                <Button className="w-full" size="lg" onClick={confirmar} loading={loading}>
+                  Confirmar Devolución
+                </Button>
+              </>
+            )}
+          </div>
         )}
       </div>
-
-      {producto && tallas.length > 0 && (
-        <>
-          <div className="card mb-4">
-            <h3 className="font-bold text-gray-700 mb-3">Destino del retorno</h3>
-            <div className="flex gap-3">
-              <button onClick={() => setUbicacionId(1)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${ubicacionId === 1 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>🏪 Tienda</button>
-              <button onClick={() => setUbicacionId(2)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${ubicacionId === 2 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>📦 Bodega</button>
-            </div>
-          </div>
-
-          <div className="card mb-4">
-            <h3 className="font-bold text-gray-700 mb-3">Talla</h3>
-            <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={setTallaId} />
-          </div>
-
-          {tallaId && (
-            <>
-              <div className="card mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-gray-700">Cantidad</h3>
-                </div>
-                <div className="flex items-center gap-4 justify-center">
-                  <button onClick={() => setCantidad(Math.max(1, cantidad - 1))} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">-</button>
-                  <span className="text-3xl font-bold w-12 text-center">{cantidad}</span>
-                  <button onClick={() => setCantidad(cantidad + 1)} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">+</button>
-                </div>
-              </div>
-
-              <div className="card mb-4 space-y-4">
-                <h3 className="font-bold text-gray-700">¿Se devuelve dinero al cliente?</h3>
-                <div className="flex gap-3">
-                  <button onClick={() => setDevuelveDinero(true)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${devuelvedinero ? "bg-red-500 text-white" : "bg-gray-100 text-gray-600"}`}>Sí, devolver</button>
-                  <button onClick={() => setDevuelveDinero(false)} className={`flex-1 py-2 rounded-xl text-sm font-medium ${!devuelvedinero ? "bg-gray-600 text-white" : "bg-gray-100 text-gray-600"}`}>No</button>
-                </div>
-
-                {devuelvedinero && (
-                  <>
-                    <div>
-                      <label className="label">Monto a devolver</label>
-                      <input type="number" value={monto} onChange={e => setMonto(e.target.value)} className="input" />
-                    </div>
-                    <div>
-                      <label className="label">Método</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {METODOS.map(m => (
-                          <button key={m.value} onClick={() => setMetodoPago(m.value)} className={`py-2 rounded-xl text-sm font-medium ${metodoPago === m.value ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>{m.label}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <label className="label">Nota (opcional)</label>
-                  <input type="text" value={nota} onChange={e => setNota(e.target.value)} className="input" placeholder="Razón de la devolución..." />
-                </div>
-              </div>
-
-              <Button className="w-full" size="lg" onClick={confirmar} loading={loading}>
-                Confirmar Devolución
-              </Button>
-            </>
-          )}
-        </>
-      )}
       <div className="h-6" />
     </div>
   );

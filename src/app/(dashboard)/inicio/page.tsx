@@ -38,7 +38,7 @@ export default function InicioPage() {
   async function fetchData() {
     setLoading(true);
     const [{ data: ap }, { data: sb }] = await Promise.all([
-      supabase.from("v_apartados_pendientes").select("*").order("fecha", { ascending: true }).limit(10),
+      supabase.from("v_apartados_pendientes").select("*").eq("estado", "pendiente").order("en_tienda", { ascending: true }).order("fecha", { ascending: true }).limit(20),
       supabase.from("v_stock_bajo").select("*").limit(20),
     ]);
     setApartados(ap ?? []);
@@ -78,9 +78,7 @@ export default function InicioPage() {
       {/* Banner ventas del día (admin) */}
       {isAdmin && (
         <div className="bg-brand-blue rounded-2xl p-5 mb-6 flex flex-wrap items-center gap-4">
-          <div className="w-12 h-12 bg-brand-gold rounded-xl flex items-center justify-center shrink-0 shadow">
-            <span className="text-white font-black text-lg">PM</span>
-          </div>
+          <img src="/logo.webp" alt="PM" className="w-12 h-12 rounded-xl object-contain shrink-0 shadow bg-white p-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-white font-bold">Pasión Millonaria</p>
             <p className="text-blue-200 text-xs">Inventario & Punto de Venta</p>
@@ -102,26 +100,25 @@ export default function InicioPage() {
 
       {/* Vista empleado */}
       {!isAdmin && (
-        <div className="card mb-6 bg-purple-50 border-purple-100 flex items-center gap-3">
-          <Eye className="w-6 h-6 text-purple-500 shrink-0" />
+        <div className="card mb-6 bg-brand-blue/5 border-brand-blue/15 flex items-center gap-3">
+          <Eye className="w-6 h-6 text-brand-blue shrink-0" />
           <div>
-            <p className="font-semibold text-purple-700">Modo consulta</p>
-            <p className="text-purple-500 text-sm">Puedes consultar inventario y apartados pendientes.</p>
+            <p className="font-semibold text-brand-blue">Modo consulta</p>
+            <p className="text-brand-blue/70 text-sm">Inventario, apartados, historial y reportes en modo solo lectura.</p>
           </div>
         </div>
       )}
 
-      {/* Grid principal — desktop usa 2 columnas */}
+      {/* Grid principal — desktop 3 columnas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* Columna izquierda: acciones + resumen */}
+        {/* Columna izquierda (2/3): acciones + apartados */}
         <div className="lg:col-span-2 space-y-6">
 
           {/* Acciones rápidas — solo admin */}
           {isAdmin && (
             <div>
               <h2 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Acciones rápidas</h2>
-              {/* 2 cols en mobile, 4 cols en md+ */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {accionesAdmin.map(({ href, label, icon: Icon, color, desc }) => (
                   <Link key={href} href={href}
@@ -134,26 +131,6 @@ export default function InicioPage() {
                       <p className="text-gray-400 text-xs hidden sm:block">{desc}</p>
                     </div>
                   </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Resumen ventas por método — admin */}
-          {isAdmin && resumenHoy.length > 0 && (
-            <div className="card">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-green-500" /> Ventas de hoy por método
-                </h3>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {resumenHoy.map(r => (
-                  <div key={r.metodo_pago} className="bg-gray-50 rounded-xl p-3 text-center">
-                    <p className="text-xs text-gray-500 capitalize mb-1">{r.metodo_pago}</p>
-                    <p className="font-bold text-gray-900 text-sm">{formatCurrency(r.total)}</p>
-                    <p className="text-xs text-gray-400">{r.cantidad} venta{r.cantidad !== 1 ? "s" : ""}</p>
-                  </div>
                 ))}
               </div>
             </div>
@@ -180,17 +157,13 @@ export default function InicioPage() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Columna derecha: apartados + stock bajo */}
-        <div className="space-y-6">
 
           {/* Apartados pendientes */}
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
                 <Bookmark className="w-5 h-5 text-brand-gold" />
-                Apartados
+                Apartados pendientes
                 {apartados.length > 0 && <Badge variant="warning">{apartados.length}</Badge>}
               </h3>
               <Link href="/apartados" className="text-brand-blue text-sm font-medium">Ver todos</Link>
@@ -200,21 +173,52 @@ export default function InicioPage() {
             ) : apartados.length === 0 ? (
               <p className="text-gray-400 text-sm text-center py-4">Sin apartados pendientes</p>
             ) : (
-              <div className="space-y-2 max-h-72 overflow-y-auto">
+              <div className="space-y-2">
                 {apartados.map(a => (
-                  <Link key={a.id} href={`/apartados/${a.id}`}
-                    className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 transition-all">
+                  <Link key={a.id} href={`/apartados/${a.grupo_id ?? a.id}`}
+                    className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 transition-all">
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm truncate">{a.cliente_nombre}</p>
                       <p className="text-xs text-gray-500 truncate">{a.referencia} · T:{a.talla}</p>
                     </div>
-                    <p className="text-sm font-bold text-red-600 shrink-0">{formatCurrency(a.saldo)}</p>
+                    {!a.en_tienda && (
+                      <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-lg shrink-0">
+                        Por llegar
+                      </span>
+                    )}
+                    {isAdmin && (
+                      <p className="text-sm font-bold text-red-600 shrink-0">{formatCurrency(a.saldo)}</p>
+                    )}
                     <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
                   </Link>
                 ))}
               </div>
             )}
           </div>
+        </div>
+
+        {/* Columna derecha (1/3): ventas hoy + stock bajo */}
+        <div className="space-y-6">
+
+          {/* Resumen ventas por método — admin */}
+          {isAdmin && resumenHoy.length > 0 && (
+            <div className="card">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
+                <TrendingUp className="w-5 h-5 text-green-500" /> Ventas de hoy
+              </h3>
+              <div className="space-y-2">
+                {resumenHoy.map(r => (
+                  <div key={r.metodo_pago} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="text-xs text-gray-500 capitalize">{r.metodo_pago}</p>
+                      <p className="text-xs text-gray-400">{r.cantidad} venta{r.cantidad !== 1 ? "s" : ""}</p>
+                    </div>
+                    <p className="font-bold text-gray-900 text-sm">{formatCurrency(r.total)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Stock bajo */}
           {!loading && stockBajo.length > 0 && (
@@ -224,7 +228,7 @@ export default function InicioPage() {
                 <h3 className="font-bold text-gray-800">Stock bajo</h3>
                 <Badge variant="warning">{stockBajo.length}</Badge>
               </div>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
+              <div className="space-y-2 max-h-80 overflow-y-auto">
                 {stockBajo.map((s, i) => (
                   <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50">
                     <div className="min-w-0 flex-1">

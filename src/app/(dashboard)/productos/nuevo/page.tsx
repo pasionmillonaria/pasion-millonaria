@@ -6,6 +6,7 @@ import { Package, ChevronLeft, CheckCircle, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Linea, Categoria, SistemaTalla } from "@/lib/types";
 import Button from "@/components/ui/Button";
+import InputDinero from "@/components/ui/InputDinero";
 import toast from "react-hot-toast";
 
 const SISTEMAS: { value: SistemaTalla; label: string }[] = [
@@ -224,13 +225,7 @@ export default function NuevoProductoPage() {
         {/* Precio */}
         <div>
           <label className="label">Precio base <span className="text-red-500">*</span></label>
-          <input
-            type="number"
-            value={precioBase}
-            onChange={e => setPrecioBase(e.target.value)}
-            className="input"
-            placeholder="0"
-          />
+          <InputDinero value={precioBase} onChange={raw => setPrecioBase(raw)} className="input" placeholder="0" />
         </div>
 
         <Button className="w-full" size="lg" onClick={guardar} loading={loading}>

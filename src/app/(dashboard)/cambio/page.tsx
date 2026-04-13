@@ -6,7 +6,8 @@ import { ArrowLeftRight, CheckCircle, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
-import BuscadorProducto from "@/components/BuscadorProducto";
+import InputDinero from "@/components/ui/InputDinero";
+import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
@@ -65,6 +66,7 @@ export default function CambioPage() {
   const diferencia = (parseFloat(precioSalida) || 0) - (parseFloat(precioEntrada) || 0);
 
   async function confirmar() {
+    if (loading) return;
     if (!prodEntrada || !tallaEntradaId || !prodSalida || !tallaSalidaId) {
       toast.error("Completa ambos productos"); return;
     }
@@ -114,15 +116,16 @@ export default function CambioPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
+    <div className="max-w-5xl mx-auto px-4 md:px-8 pt-6">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100"><ChevronLeft className="w-6 h-6" /></button>
         <ArrowLeftRight className="w-6 h-6 text-blue-600" />
         <h1 className="text-xl font-bold text-gray-900">Cambio de producto</h1>
       </div>
 
+      <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start mb-4 md:mb-6">
       {/* Producto que devuelve */}
-      <div className="card mb-4 border-l-4 border-orange-400">
+      <div className="card mb-4 md:mb-0 border-l-4 border-orange-400">
         <h3 className="font-bold text-gray-700 mb-1">📥 Producto que devuelve el cliente</h3>
         <p className="text-xs text-gray-400 mb-3">Lo que entra a la tienda</p>
         {prodEntrada ? (
@@ -134,21 +137,21 @@ export default function CambioPage() {
             <button onClick={() => { setProdEntrada(null); setTallaEntradaId(null); }} className="text-brand-blue text-sm">Cambiar</button>
           </div>
         ) : (
-          <BuscadorProducto onSelect={async p => { setProdEntrada(p); setPrecioEntrada(String(p.precio_base)); setTallasEntrada(await cargarTallas(supabase, p.id)); }} />
+          <ListaProductos onSelect={async p => { setProdEntrada(p); setPrecioEntrada(String(p.precio_base)); setTallasEntrada(await cargarTallas(supabase, p.id)); }} />
         )}
         {prodEntrada && tallasEntrada.length > 0 && (
           <>
             <SelectorTalla tallas={tallasEntrada} seleccionada={tallaEntradaId} onSelect={setTallaEntradaId} />
             <div className="mt-3">
               <label className="label">Precio al que compró</label>
-              <input type="number" value={precioEntrada} onChange={e => setPrecioEntrada(e.target.value)} className="input" />
+              <InputDinero value={precioEntrada} onChange={raw => setPrecioEntrada(raw)} className="input" />
             </div>
           </>
         )}
       </div>
 
       {/* Producto que se lleva */}
-      <div className="card mb-4 border-l-4 border-green-400">
+      <div className="card border-l-4 border-green-400">
         <h3 className="font-bold text-gray-700 mb-1">📤 Producto que se lleva el cliente</h3>
         <p className="text-xs text-gray-400 mb-3">Lo que sale de la tienda</p>
         {prodSalida ? (
@@ -160,7 +163,7 @@ export default function CambioPage() {
             <button onClick={() => { setProdSalida(null); setTallaSalidaId(null); }} className="text-brand-blue text-sm">Cambiar</button>
           </div>
         ) : (
-          <BuscadorProducto onSelect={async p => { setProdSalida(p); setPrecioSalida(String(p.precio_base)); setTallasSalida(await cargarTallas(supabase, p.id)); }} />
+          <ListaProductos onSelect={async p => { setProdSalida(p); setPrecioSalida(String(p.precio_base)); setTallasSalida(await cargarTallas(supabase, p.id)); }} />
         )}
         {prodSalida && tallasSalida.length > 0 && (
           <>
@@ -171,11 +174,13 @@ export default function CambioPage() {
             <SelectorTalla tallas={tallasSalida} seleccionada={tallaSalidaId} onSelect={setTallaSalidaId} ubicacionId={ubicacionSalidaId} />
             <div className="mt-3">
               <label className="label">Precio del nuevo producto</label>
-              <input type="number" value={precioSalida} onChange={e => setPrecioSalida(e.target.value)} className="input" />
+              <InputDinero value={precioSalida} onChange={raw => setPrecioSalida(raw)} className="input" />
             </div>
           </>
         )}
       </div>
+
+      </div>{/* fin grid productos */}
 
       {/* Diferencia */}
       {tallaEntradaId && tallaSalidaId && (

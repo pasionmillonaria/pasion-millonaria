@@ -6,9 +6,10 @@ import { CheckCircle, ShoppingBag, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency } from "@/lib/utils";
-import BuscadorProducto from "@/components/BuscadorProducto";
+import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
+import InputDinero from "@/components/ui/InputDinero";
 import toast from "react-hot-toast";
 import type { CanalMovimiento, MetodoPago } from "@/lib/types";
 
@@ -110,6 +111,7 @@ export default function VentaPage() {
   const totalFinal = (precioNum - descuentoNum) * cantidad;
 
   async function confirmarVenta() {
+    if (loading) return;
     if (!producto || !tallaId) return;
     setLoading(true);
 
@@ -162,7 +164,7 @@ export default function VentaPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
+    <div className="max-w-5xl mx-auto px-4 md:px-8 pt-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100">
@@ -174,70 +176,74 @@ export default function VentaPage() {
         </div>
       </div>
 
-      {/* Paso 1: Producto */}
-      <div className="card mb-4">
-        <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${paso !== "producto" ? "bg-green-500 text-white" : "bg-brand-blue text-white"}`}>
-            {paso !== "producto" ? "✓" : "1"}
-          </span>
-          Producto
-        </h3>
-        {producto ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">{producto.referencia}</p>
-              <p className="text-xs text-gray-500">{producto.codigo} · {producto.categoria_nombre}</p>
+      <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start">
+        {/* Columna izquierda: Producto + Talla */}
+        <div className="space-y-4 mb-4 md:mb-0">
+          {/* Paso 1: Producto */}
+          <div className="card">
+            <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${paso !== "producto" ? "bg-green-500 text-white" : "bg-brand-blue text-white"}`}>
+                {paso !== "producto" ? "✓" : "1"}
+              </span>
+              Producto
+            </h3>
+            {producto ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-900">{producto.referencia}</p>
+                  <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
+                </div>
+                <button
+                  onClick={() => { setPaso("producto"); setProducto(null); setTallaId(null); }}
+                  className="text-brand-blue text-sm font-medium"
+                >
+                  Cambiar
+                </button>
+              </div>
+            ) : (
+              <ListaProductos onSelect={handleSelectProducto} />
+            )}
+          </div>
+
+          {/* Paso 2: Talla */}
+          {paso !== "producto" && (
+            <div className="card">
+              <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${tallaId ? "bg-green-500 text-white" : "bg-brand-blue text-white"}`}>
+                  {tallaId ? "✓" : "2"}
+                </span>
+                Selecciona talla
+              </h3>
+
+              {/* Ubicación */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setUbicacionId(1)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${ubicacionId === 1 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
+                >
+                  🏪 Tienda
+                </button>
+                <button
+                  onClick={() => setUbicacionId(2)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${ubicacionId === 2 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
+                >
+                  📦 Bodega
+                </button>
+              </div>
+
+              <SelectorTalla
+                tallas={tallas}
+                seleccionada={tallaId}
+                onSelect={handleSelectTalla}
+                ubicacionId={ubicacionId}
+              />
             </div>
-            <button
-              onClick={() => { setPaso("producto"); setProducto(null); setTallaId(null); }}
-              className="text-brand-blue text-sm font-medium"
-            >
-              Cambiar
-            </button>
-          </div>
-        ) : (
-          <BuscadorProducto onSelect={handleSelectProducto} />
-        )}
-      </div>
-
-      {/* Paso 2: Talla */}
-      {paso !== "producto" && (
-        <div className="card mb-4">
-          <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${tallaId ? "bg-green-500 text-white" : "bg-brand-blue text-white"}`}>
-              {tallaId ? "✓" : "2"}
-            </span>
-            Selecciona talla
-          </h3>
-
-          {/* Ubicación */}
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => setUbicacionId(1)}
-              className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${ubicacionId === 1 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
-            >
-              🏪 Tienda
-            </button>
-            <button
-              onClick={() => setUbicacionId(2)}
-              className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${ubicacionId === 2 ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}
-            >
-              📦 Bodega
-            </button>
-          </div>
-
-          <SelectorTalla
-            tallas={tallas}
-            seleccionada={tallaId}
-            onSelect={handleSelectTalla}
-            ubicacionId={ubicacionId}
-          />
+          )}
         </div>
-      )}
 
-      {/* Paso 3: Detalle */}
-      {paso === "detalle" && tallaId && (
-        <div className="card mb-4 space-y-4">
+        {/* Columna derecha: Detalle */}
+        {paso === "detalle" && tallaId && (
+          <div className="card space-y-4">
           <h3 className="font-bold text-gray-700 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-brand-blue text-white flex items-center justify-center text-xs font-bold">3</span>
             Detalle de la venta
@@ -278,25 +284,13 @@ export default function VentaPage() {
           {/* Precio */}
           <div>
             <label className="label">Precio de venta</label>
-            <input
-              type="number"
-              value={precioVenta}
-              onChange={e => setPrecioVenta(e.target.value)}
-              className="input"
-              placeholder="0"
-            />
+            <InputDinero value={precioVenta} onChange={raw => setPrecioVenta(raw)} className="input" placeholder="0" />
           </div>
 
           {/* Descuento */}
           <div>
             <label className="label">Descuento (opcional)</label>
-            <input
-              type="number"
-              value={descuento}
-              onChange={e => setDescuento(e.target.value)}
-              className="input"
-              placeholder="0"
-            />
+            <InputDinero value={descuento} onChange={raw => setDescuento(raw)} className="input" placeholder="0" />
           </div>
 
           {/* Método de pago */}
@@ -348,7 +342,8 @@ export default function VentaPage() {
             Confirmar Venta
           </Button>
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

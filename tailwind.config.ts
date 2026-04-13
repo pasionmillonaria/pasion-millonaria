@@ -10,12 +10,12 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          blue: "#003366",
-          "blue-light": "#004488",
-          "blue-dark": "#002244",
-          gold: "#DAA520",
-          "gold-light": "#F0C040",
-          "gold-dark": "#B8860B",
+          blue: "#003BC4",
+          "blue-light": "#1A52D1",
+          "blue-dark": "#002A9A",
+          gold: "#FFC926",
+          "gold-light": "#FFD94D",
+          "gold-dark": "#E6B000",
         },
       },
       fontFamily: {

@@ -11,8 +11,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import BuscadorProducto from "@/components/BuscadorProducto";
+import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
 import Modal from "@/components/ui/Modal";
+import InputDinero from "@/components/ui/InputDinero";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 import toast from "react-hot-toast";
@@ -148,8 +150,11 @@ function ModalVenta({ onClose, onSave }: {
   function handleSelectTalla(id: number) {
     setTallaId(id);
     setTallaNombre(tallas.find(t => t.talla_id === id)?.talla_nombre ?? "");
+    setCantidad(1);
     setPaso("detalle");
   }
+
+  const stockTallaActual = tallas.find(t => t.talla_id === tallaId)?.stock_tienda ?? 0;
 
   useEffect(() => {
     if (metodo === "efectivo") { setMontoEfe(total); setMontoTransf(0); }
@@ -160,6 +165,7 @@ function ModalVenta({ onClose, onSave }: {
 
   function handleSave() {
     if (!producto || !tallaId || total <= 0) return;
+    if (cantidad > stockTallaActual) { toast.error(`Solo hay ${stockTallaActual} unidad${stockTallaActual !== 1 ? "es" : ""} en tienda`); return; }
     if (!mixtoValido) { toast.error(`Efectivo + Transferencia debe sumar ${formatCurrency(total)}`); return; }
     onSave({
       tipo: "venta",
@@ -175,46 +181,62 @@ function ModalVenta({ onClose, onSave }: {
   }
 
   return (
-    <Modal open onClose={onClose} title="Registrar Venta" size="md">
-      <div className="space-y-4">
-        <div>
-          <label className="label">Producto</label>
-          {producto ? (
-            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-              <div>
-                <p className="font-bold text-gray-900">{producto.referencia}</p>
-                <p className="text-xs text-gray-500">{producto.codigo}</p>
+    <Modal open onClose={onClose} title="Registrar Venta" size="3xl" panelClassName="min-h-[78vh] md:min-h-0">
+      <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start space-y-4 md:space-y-0">
+
+        {/* Columna izquierda: Producto + Talla */}
+        <div className="space-y-4">
+          <div>
+            <label className="label">Producto</label>
+            {producto ? (
+              <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                <div>
+                  <p className="font-bold text-gray-900">{producto.referencia}</p>
+                  <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
+                </div>
+                <button onClick={() => { setProducto(null); setTallaId(null); setTallas([]); setPaso("producto"); }}
+                  className="text-xs text-brand-blue font-medium">Cambiar</button>
               </div>
-              <button onClick={() => { setProducto(null); setTallaId(null); setTallas([]); setPaso("producto"); }}
-                className="text-xs text-brand-blue font-medium">Cambiar</button>
+            ) : (
+              <>
+                {/* Mobile: dropdown */}
+                <div className="md:hidden">
+                  <BuscadorProducto onSelect={handleSelectProducto} />
+                </div>
+                {/* Desktop: lista inline */}
+                <div className="hidden md:block">
+                  <ListaProductos onSelect={handleSelectProducto} />
+                </div>
+              </>
+            )}
+          </div>
+
+          {paso !== "producto" && tallas.length > 0 && (
+            <div>
+              <label className="label">Talla</label>
+              <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={handleSelectTalla} />
             </div>
-          ) : (
-            <BuscadorProducto onSelect={handleSelectProducto} />
           )}
         </div>
 
-        {paso !== "producto" && tallas.length > 0 && (
-          <div>
-            <label className="label">Talla</label>
-            <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={handleSelectTalla} />
-          </div>
-        )}
-
+        {/* Columna derecha: Detalles (móvil: apilado, desktop: columna derecha) */}
         {paso === "detalle" && tallaId && (
-          <>
+          <div className="space-y-4">
             <div>
               <label className="label">Cantidad</label>
               <div className="flex items-center gap-3">
                 <button onClick={() => setCantidad(Math.max(1, cantidad - 1))}
                   className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center">−</button>
                 <span className="text-2xl font-bold w-8 text-center">{cantidad}</span>
-                <button onClick={() => setCantidad(cantidad + 1)}
-                  className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center">+</button>
+                <button onClick={() => setCantidad(Math.min(stockTallaActual, cantidad + 1))}
+                  disabled={cantidad >= stockTallaActual}
+                  className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed">+</button>
               </div>
+              {stockTallaActual > 0 && <p className="text-xs text-gray-400 mt-1">Stock disponible: {stockTallaActual} uds</p>}
             </div>
             <div>
               <label className="label">Precio unitario</label>
-              <input type="number" value={precio} onChange={e => setPrecio(e.target.value)} className="input" placeholder="0" />
+              <InputDinero value={precio} onChange={raw => setPrecio(raw)} className="input" placeholder="0" />
             </div>
             <div>
               <label className="label">Método de pago</label>
@@ -232,14 +254,14 @@ function ModalVenta({ onClose, onSave }: {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="label text-green-700">Efectivo</label>
-                    <input type="number" value={montoEfe}
-                      onChange={e => { const v = parseFloat(e.target.value) || 0; setMontoEfe(v); setMontoTransf(total - v); }}
+                    <InputDinero value={montoEfe}
+                      onChange={raw => { const v = parseFloat(raw) || 0; setMontoEfe(v); setMontoTransf(total - v); }}
                       className="input font-bold text-green-700" />
                   </div>
                   <div>
                     <label className="label text-blue-700">Transferencia</label>
-                    <input type="number" value={montoTransf}
-                      onChange={e => { const v = parseFloat(e.target.value) || 0; setMontoTransf(v); setMontoEfe(total - v); }}
+                    <InputDinero value={montoTransf}
+                      onChange={raw => { const v = parseFloat(raw) || 0; setMontoTransf(v); setMontoEfe(total - v); }}
                       className="input font-bold text-blue-700" />
                   </div>
                 </div>
@@ -257,7 +279,7 @@ function ModalVenta({ onClose, onSave }: {
             <Button className="w-full" onClick={handleSave} disabled={!mixtoValido || total <= 0}>
               Guardar Venta
             </Button>
-          </>
+          </div>
         )}
       </div>
     </Modal>
@@ -298,7 +320,7 @@ function ModalGasto({ onClose, onSave }: {
         </div>
         <div>
           <label className="label">Valor</label>
-          <input type="number" value={valor} onChange={e => setValor(e.target.value)} className="input" placeholder="0" />
+          <InputDinero value={valor} onChange={raw => setValor(raw)} className="input" placeholder="0" />
         </div>
         <div>
           <label className="label">Pagado con</label>
@@ -356,7 +378,7 @@ function ModalIngreso({ onClose, onSave }: {
         </div>
         <div>
           <label className="label">Valor</label>
-          <input type="number" value={valor} onChange={e => setValor(e.target.value)} className="input" placeholder="0" />
+          <InputDinero value={valor} onChange={raw => setValor(raw)} className="input" placeholder="0" />
         </div>
         <div>
           <label className="label">Forma de ingreso</label>
@@ -412,7 +434,7 @@ function ModalCajaFuerte({ onClose, onSave, modo = "guardar" }: {
         </p>
         <div>
           <label className="label">{esRetiro ? "Valor a retirar" : "Valor a guardar"}</label>
-          <input type="number" value={valor} onChange={e => setValor(e.target.value)}
+          <InputDinero value={valor} onChange={raw => setValor(raw)}
             onKeyDown={e => e.key === "Enter" && handleSave()}
             className="input text-xl font-bold" placeholder="0" autoFocus />
         </div>
@@ -460,14 +482,15 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
 
   return (
     <div id="reporte-cierre" style={{ width: 600, padding: 40, fontFamily: "Arial, sans-serif", background: "#fff", color: "#111", lineHeight: 1.4 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #e5e7eb", paddingBottom: 20, marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #e5e7eb", paddingBottom: 20, marginBottom: 24 }}>
         <div>
           <p style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>Cierre de Caja</p>
           <p style={{ fontSize: 14, color: "#6b7280", margin: "4px 0 0" }}>{formatDate(fecha)}</p>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <p style={{ fontSize: 13, fontWeight: 800, color: "#003366", textTransform: "uppercase", letterSpacing: 1, margin: 0 }}>Pasión Millonaria</p>
-          <p style={{ fontSize: 12, color: "#10b981", fontWeight: 700, margin: "4px 0 0" }}>✓ Verificado</p>
+        <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.webp" alt="Pasión Millonaria" style={{ width: 52, height: 52, objectFit: "contain", borderRadius: 10, background: "#f3f4f6", padding: 4 }} />
+          <p style={{ fontSize: 10, color: "#10b981", fontWeight: 700, margin: 0 }}>✓ Verificado</p>
         </div>
       </div>
 
@@ -500,14 +523,22 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
             const pagoColor = v.metodoPago === "efectivo" ? "#065f46" : v.metodoPago === "transferencia" ? "#1e40af" : "#5b21b6";
             const pagoLabel = v.metodoPago === "efectivo" ? "Efe" : v.metodoPago === "transferencia" ? "Transf" : "Mixto";
             return (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 4rem", gap: 0, padding: "6px 8px", background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6", alignItems: "center" }}>
-                <span style={{ textAlign: "center", fontWeight: 900, fontSize: 12 }}>{v.cantidad}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef}</span>
-                <span style={{ textAlign: "center", fontSize: 11, color: "#6b7280" }}>{v.tallaNombre ?? "—"}</span>
-                <span style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{formatCurrency(v.valor)}</span>
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <span style={{ background: pagoBg, color: pagoColor, fontSize: 9, fontWeight: 800, padding: "2px 5px", borderRadius: 4 }}>{pagoLabel}</span>
+              <div key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 4rem", gap: 0, padding: "6px 8px", alignItems: "center" }}>
+                  <span style={{ textAlign: "center", fontWeight: 900, fontSize: 12 }}>{v.cantidad}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef}</span>
+                  <span style={{ textAlign: "center", fontSize: 11, color: "#6b7280" }}>{v.tallaNombre ?? "—"}</span>
+                  <span style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{formatCurrency(v.valor)}</span>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <span style={{ background: pagoBg, color: pagoColor, fontSize: 9, fontWeight: 800, padding: "2px 5px", borderRadius: 4 }}>{pagoLabel}</span>
+                  </div>
                 </div>
+                {v.metodoPago === "mixto" && (
+                  <div style={{ padding: "0 8px 5px", display: "flex", gap: 12, fontSize: 9, fontWeight: 700 }}>
+                    <span style={{ color: "#047857" }}>Efe: {formatCurrency(v.montoEfectivo)}</span>
+                    <span style={{ color: "#1d4ed8" }}>Transf: {formatCurrency(v.montoTransferencia)}</span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -691,7 +722,9 @@ export default function CajaPage() {
   const [modalCerrar, setModalCerrar] = useState(false);
   const [loadingCerrar, setLoadingCerrar] = useState(false);
   const [efectivoContado, setEfectivoContado] = useState("");
+  const [efectivoContadoCierre, setEfectivoContadoCierre] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [loadingDelete, setLoadingDelete] = useState(false);
   const [reporteParams, setReporteParams] = useState<ReporteParams | null>(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
 
@@ -762,6 +795,7 @@ export default function CajaPage() {
       setCajaDiariaId(cajaHoy.id);
       setSaldoInicial(cajaHoy.saldo_inicial);
       setCajaEstado(cajaHoy.estado);
+      setEfectivoContadoCierre(cajaHoy.efectivo_contado ?? null);
       const { data: regs } = await supabase
         .from("registros_caja")
         .select("*, movimientos(producto_id, talla_id, cantidad, productos(referencia), tallas(nombre))")
@@ -927,17 +961,21 @@ export default function CajaPage() {
 
   // ── Eliminar registro ───────────────────────────────────────
   async function eliminarRegistro(localId: string) {
+    if (loadingDelete) return;
+    setLoadingDelete(true);
     const reg = registros.find(r => r.id === localId);
-    setRegistros(prev => prev.filter(r => r.id !== localId));
     setDeleteId(null);
     if (reg?.dbId) {
-      // Si hay movimiento asociado (venta), también eliminarlo — el trigger revierte el stock
+      // Primero borrar el registro de caja (tiene FK hacia movimientos)
+      await supabase.from("registros_caja").delete().eq("id", reg.dbId);
+      // Luego borrar el movimiento — al eliminarlo el stock se restaura automáticamente
       if (reg.movimientoId) {
         await supabase.from("movimientos").delete().eq("id", reg.movimientoId);
       }
-      await supabase.from("registros_caja").delete().eq("id", reg.dbId);
     }
-    toast.success("Eliminado");
+    setRegistros(prev => prev.filter(r => r.id !== localId));
+    setLoadingDelete(false);
+    toast.success(reg?.tipo === "venta" ? "Venta eliminada — stock restaurado" : "Registro eliminado");
   }
 
   // ── Cerrar caja ─────────────────────────────────────────────
@@ -1088,20 +1126,50 @@ export default function CajaPage() {
 
           {/* Saldo en caja */}
           <div className="card bg-brand-blue text-white mb-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-blue-200 text-sm">Debe haber en caja</p>
-                <p className="text-3xl font-black">{formatCurrency(debeHaberEnCaja)}</p>
-                <p className="text-blue-200 text-xs mt-1">Saldo inicial: {formatCurrency(saldoInicial)}</p>
-              </div>
-              {cajaEstado === "cerrada" ? (
-                <div className="flex flex-col items-center gap-1">
-                  <CheckCircle className="w-8 h-8 text-green-300" />
-                  <span className="text-xs text-green-300 font-semibold">Cerrada</span>
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                {/* Número grande: contado real si está cerrada, debe haber si está abierta */}
+                {cajaEstado === "cerrada" && efectivoContadoCierre !== null ? (
+                  <>
+                    <p className="text-blue-200 text-sm">Contado real</p>
+                    <p className="text-3xl font-black mb-1">{formatCurrency(efectivoContadoCierre)}</p>
+                    {efectivoContadoCierre !== debeHaberEnCaja && (
+                      <p className={`text-xs font-semibold mb-3 ${efectivoContadoCierre > debeHaberEnCaja ? "text-green-300" : "text-red-300"}`}>
+                        {efectivoContadoCierre > debeHaberEnCaja ? "+" : ""}{formatCurrency(efectivoContadoCierre - debeHaberEnCaja)} vs lo esperado
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-blue-200 text-sm">Debe haber en caja</p>
+                    <p className="text-3xl font-black mb-3">{formatCurrency(debeHaberEnCaja)}</p>
+                  </>
+                )}
+                <div className="space-y-1 text-xs text-blue-200">
+                  <div className="flex justify-between"><span>Saldo inicial</span><span>{formatCurrency(saldoInicial)}</span></div>
+                  {ventasEfectivo > 0 && <div className="flex justify-between"><span>+ Ventas efectivo</span><span className="text-green-300">{formatCurrency(ventasEfectivo)}</span></div>}
+                  {ventasTransferencia > 0 && <div className="flex justify-between opacity-60"><span>+ Ventas transferencia</span><span>{formatCurrency(ventasTransferencia)}</span></div>}
+                  {ingresosEfectivo > 0 && <div className="flex justify-between"><span>+ Ingresos extra</span><span className="text-green-300">{formatCurrency(ingresosEfectivo)}</span></div>}
+                  {gastosEfectivo > 0 && <div className="flex justify-between"><span>− Gastos</span><span className="text-red-300">{formatCurrency(gastosEfectivo)}</span></div>}
+                  {totalGuardado > 0 && <div className="flex justify-between"><span>− Guardado</span><span className="text-amber-300">{formatCurrency(totalGuardado)}</span></div>}
+                  {cajaEstado === "cerrada" && efectivoContadoCierre !== null && (
+                    <div className="flex justify-between border-t border-blue-400 pt-1 mt-1">
+                      <span>Debe haber en caja</span>
+                      <span className="font-semibold text-white">{formatCurrency(debeHaberEnCaja)}</span>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <Lock className="w-8 h-8 text-blue-300 opacity-40" />
-              )}
+              </div>
+              <div className="ml-4 mt-1">
+                {cajaEstado === "cerrada" ? (
+                  <div className="flex flex-col items-center gap-1">
+                    <CheckCircle className="w-8 h-8 text-green-300" />
+                    <span className="text-xs text-green-300 font-semibold">Cerrada</span>
+                  </div>
+                ) : (
+                  <Lock className="w-8 h-8 text-blue-300 opacity-40" />
+                )}
+              </div>
             </div>
           </div>
 
@@ -1158,7 +1226,7 @@ export default function CajaPage() {
                     r.metodoPago === "transferencia" ? "Transf" : "Mixto";
                   return (
                     <div key={r.id} className={`${getTipoRow(r.tipo, r.valor)} rounded-xl overflow-hidden ${r.pending ? "opacity-60" : ""}`}>
-                      <div className="grid grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem] items-center px-3 py-2.5">
+                      <div className={`grid items-center px-3 py-2.5 ${cajaEstado === "abierta" ? "grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem_2rem]" : "grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem]"}`}>
                         <span className="text-sm font-black text-gray-700 text-center">{r.cantidad}</span>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{r.productoRef ?? "Producto"}</p>
@@ -1169,12 +1237,18 @@ export default function CajaPage() {
                         <div className="flex justify-center">
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${pagoColor}`}>{pagoLabel}</span>
                         </div>
+                        {cajaEstado === "abierta" && (
+                          <button onClick={() => setDeleteId(r.id)}
+                            className="flex items-center justify-center p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-white/60 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
-                      {cajaEstado === "abierta" && (
-                        <button onClick={() => setDeleteId(r.id)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-white/60 text-gray-300 hover:text-red-500 transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      {r.metodoPago === "mixto" && (
+                        <div className="px-3 pb-2 flex gap-3 text-[10px] font-semibold">
+                          <span className="text-emerald-600">Efe: {formatCurrency(r.montoEfectivo)}</span>
+                          <span className="text-blue-600">Transf: {formatCurrency(r.montoTransferencia)}</span>
+                        </div>
                       )}
                     </div>
                   );
@@ -1250,16 +1324,18 @@ export default function CajaPage() {
       {modalCerrar && (
         <Modal open onClose={() => setModalCerrar(false)} title="Cerrar Caja">
           <div className="space-y-4">
-            <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-              <div className="flex justify-between text-sm"><span className="text-gray-500">Ventas del día</span><span className="font-bold text-green-600">{formatCurrency(totalVentas)}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-gray-500">Gastos</span><span className="font-bold text-red-600">- {formatCurrency(totalGastos)}</span></div>
-              {totalIngresos > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">Ingresos extra</span><span className="font-bold text-blue-600">+ {formatCurrency(totalIngresos)}</span></div>}
-              {totalGuardado > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">Guardado</span><span className="font-bold text-amber-600">− {formatCurrency(totalGuardado)}</span></div>}
-              <div className="border-t pt-2 flex justify-between"><span className="font-bold text-gray-900">Debe haber en caja</span><span className="font-black text-brand-blue text-lg">{formatCurrency(debeHaberEnCaja)}</span></div>
+            <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Saldo inicial</span><span className="font-semibold text-gray-700">{formatCurrency(saldoInicial)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">+ Ventas efectivo</span><span className="font-semibold text-green-600">+ {formatCurrency(ventasEfectivo)}</span></div>
+              {ventasTransferencia > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400 italic">  Ventas transferencia</span><span className="text-gray-400 italic">{formatCurrency(ventasTransferencia)}</span></div>}
+              {ingresosEfectivo > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">+ Ingresos extra (efe)</span><span className="font-semibold text-blue-600">+ {formatCurrency(ingresosEfectivo)}</span></div>}
+              {gastosEfectivo > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">− Gastos efectivo</span><span className="font-semibold text-red-600">− {formatCurrency(gastosEfectivo)}</span></div>}
+              {totalGuardado > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">− Guardado caja fuerte</span><span className="font-semibold text-amber-600">− {formatCurrency(totalGuardado)}</span></div>}
+              <div className="border-t pt-2 mt-2 flex justify-between"><span className="font-bold text-gray-900">Debe haber en caja</span><span className="font-black text-brand-blue text-lg">{formatCurrency(debeHaberEnCaja)}</span></div>
             </div>
             <div>
               <label className="label">Efectivo contado (opcional)</label>
-              <input type="number" value={efectivoContado} onChange={e => setEfectivoContado(e.target.value)}
+              <InputDinero value={efectivoContado} onChange={raw => setEfectivoContado(raw)}
                 className="input" placeholder={String(Math.round(debeHaberEnCaja))} />
               {efectivoContado && diferenciaCaja !== 0 && (
                 <p className={`text-sm mt-2 font-semibold ${diferenciaCaja > 0 ? "text-green-600" : "text-red-600"}`}>

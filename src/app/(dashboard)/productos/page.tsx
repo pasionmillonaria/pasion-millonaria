@@ -16,6 +16,13 @@ interface ProductoConInfo extends Producto {
   linea_nombre: string;
 }
 
+const SISTEMA_TALLA_LABEL: Record<string, string> = {
+  ropa_adulto: "Ropa adulto",
+  ropa_nino: "Ropa niño",
+  calzado: "Calzado",
+  unica: "Talla única",
+};
+
 export default function ProductosPage() {
   const supabase = createClient();
   const { isAdmin } = useProfile();
@@ -87,7 +94,7 @@ export default function ProductosPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
         <input
           type="text"
-          placeholder="Buscar por referencia, código..."
+          placeholder="Buscar por referencia o categoría..."
           value={busqueda}
           onChange={e => setBusqueda(e.target.value)}
           className="input pl-10"
@@ -105,8 +112,8 @@ export default function ProductosPage() {
                   <p className="font-bold text-gray-900 truncate">{p.referencia}</p>
                   {!p.activo && <Badge variant="danger">Inactivo</Badge>}
                 </div>
-                <p className="text-xs text-gray-500">{p.codigo} · {p.linea_nombre} · {p.categoria_nombre}</p>
-                <p className="text-xs text-gray-400">{p.sistema_talla}</p>
+                <p className="text-xs text-gray-500">{p.linea_nombre} · {p.categoria_nombre}</p>
+                <p className="text-xs text-gray-400">{SISTEMA_TALLA_LABEL[p.sistema_talla] ?? p.sistema_talla}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button

@@ -261,6 +261,7 @@ export interface Database {
         Row: {
           id: number;
           fecha: string;
+          grupo_id: number | null;
           cliente_id: number;
           producto_id: number;
           talla_id: number;
@@ -271,6 +272,7 @@ export interface Database {
           usuario_id: string | null;
         };
         Insert: {
+          grupo_id?: number | null;
           cliente_id: number;
           producto_id: number;
           talla_id: number;
@@ -281,6 +283,7 @@ export interface Database {
           usuario_id?: string | null;
         };
         Update: {
+          grupo_id?: number | null;
           cliente_id?: number;
           producto_id?: number;
           talla_id?: number;
@@ -481,6 +484,7 @@ export interface Database {
         Row: {
           id: number;
           fecha: string;
+          grupo_id: number | null;
           cliente_nombre: string;
           cliente_telefono: string | null;
           referencia: string;
@@ -489,6 +493,8 @@ export interface Database {
           total_abonado: number;
           saldo: number;
           estado: EstadoApartado;
+          en_tienda: boolean;
+          observacion: string | null;
         };
         Relationships: [];
       };

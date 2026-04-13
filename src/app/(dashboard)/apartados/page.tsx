@@ -9,9 +9,52 @@ import type { VApartadosPendientes } from "@/lib/types";
 import Spinner from "@/components/ui/Spinner";
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
+import { useProfile } from "@/lib/context/ProfileContext";
+
+interface GrupoApartado {
+  grupoId: number;
+  clienteNombre: string;
+  clienteTelefono: string | null;
+  fecha: string;
+  estado: "pendiente" | "entregado" | "cancelado";
+  items: VApartadosPendientes[];
+  totalPrecio: number;
+  totalAbonado: number;
+  totalSaldo: number;
+}
+
+function agrupar(apartados: VApartadosPendientes[]): GrupoApartado[] {
+  const mapa = new Map<number, GrupoApartado>();
+  for (const a of apartados) {
+    const gid = a.grupo_id ?? a.id;
+    if (!mapa.has(gid)) {
+      mapa.set(gid, {
+        grupoId: gid,
+        clienteNombre: a.cliente_nombre,
+        clienteTelefono: a.cliente_telefono,
+        fecha: a.fecha,
+        estado: a.estado as "pendiente" | "entregado" | "cancelado",
+        items: [],
+        totalPrecio: 0,
+        totalAbonado: 0,
+        totalSaldo: 0,
+      });
+    }
+    const g = mapa.get(gid)!;
+    g.items.push(a);
+    g.totalPrecio += a.precio;
+    g.totalAbonado += a.total_abonado;
+    g.totalSaldo += a.saldo;
+    // El estado del grupo: si alguno está pendiente → pendiente
+    if (a.estado === "pendiente") g.estado = "pendiente";
+    else if (a.estado === "entregado" && g.estado !== "pendiente") g.estado = "entregado";
+  }
+  return Array.from(mapa.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
 
 export default function ApartadosPage() {
   const supabase = createClient();
+  const { isAdmin } = useProfile();
   const [apartados, setApartados] = useState<VApartadosPendientes[]>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState("");
@@ -30,23 +73,25 @@ export default function ApartadosPage() {
     load();
   }, []);
 
-  const filtrados = apartados.filter(a => {
-    if (a.estado !== filtroEstado) return false;
+  const grupos = agrupar(apartados);
+
+  const filtrados = grupos.filter(g => {
+    if (g.estado !== filtroEstado) return false;
     if (busqueda) {
       const q = busqueda.toLowerCase();
       return (
-        a.cliente_nombre?.toLowerCase().includes(q) ||
-        a.referencia?.toLowerCase().includes(q) ||
-        (a.cliente_telefono ?? "").includes(q)
+        g.clienteNombre.toLowerCase().includes(q) ||
+        (g.clienteTelefono ?? "").includes(q) ||
+        g.items.some(i => i.referencia.toLowerCase().includes(q))
       );
     }
     return true;
   });
 
   const counts = {
-    pendiente: apartados.filter(a => a.estado === "pendiente").length,
-    entregado: apartados.filter(a => a.estado === "entregado").length,
-    cancelado: apartados.filter(a => a.estado === "cancelado").length,
+    pendiente: grupos.filter(g => g.estado === "pendiente").length,
+    entregado: grupos.filter(g => g.estado === "entregado").length,
+    cancelado: grupos.filter(g => g.estado === "cancelado").length,
   };
 
   return (
@@ -55,9 +100,11 @@ export default function ApartadosPage() {
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <Bookmark className="w-6 h-6 text-brand-gold" /> Apartados
         </h1>
-        <Link href="/apartados/nuevo" className="btn-gold py-2 px-4 text-sm rounded-xl flex items-center gap-1">
-          <Plus className="w-4 h-4" /> Nuevo
-        </Link>
+        {isAdmin && (
+          <Link href="/apartados/nuevo" className="btn-gold py-2 px-4 text-sm rounded-xl flex items-center gap-1">
+            <Plus className="w-4 h-4" /> Nuevo
+          </Link>
+        )}
       </div>
 
       {/* Buscador */}
@@ -100,7 +147,7 @@ export default function ApartadosPage() {
           title="Sin apartados"
           description={filtroEstado === "pendiente" ? "No hay apartados pendientes" : `No hay apartados ${filtroEstado}s`}
           action={
-            filtroEstado === "pendiente" ? (
+            filtroEstado === "pendiente" && isAdmin ? (
               <Link href="/apartados/nuevo" className="btn-gold py-2 px-4 text-sm">
                 Crear apartado
               </Link>
@@ -109,29 +156,38 @@ export default function ApartadosPage() {
         />
       ) : (
         <div className="space-y-3">
-          {filtrados.map(a => (
+          {filtrados.map(g => (
             <Link
-              key={a.id}
-              href={`/apartados/${a.id}`}
+              key={g.grupoId}
+              href={`/apartados/${g.grupoId}`}
               className="card hover:shadow-md active:scale-95 transition-all flex items-center gap-3"
             >
-              <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0 relative">
                 <Bookmark className="w-6 h-6 text-amber-600" />
+                {g.items.length > 1 && (
+                  <span className="absolute -top-1 -right-1 bg-brand-blue text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                    {g.items.length}
+                  </span>
+                )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-gray-900 truncate">{a.cliente_nombre}</p>
-                <p className="text-xs text-gray-500 truncate">{a.referencia} — Talla {a.talla}</p>
-                <p className="text-xs text-gray-400">{formatDate(a.fecha)}</p>
+                <p className="font-bold text-gray-900 truncate">{g.clienteNombre}</p>
+                <p className="text-xs text-gray-500 truncate">
+                  {g.items.length === 1
+                    ? `${g.items[0].referencia} — Talla ${g.items[0].talla}`
+                    : g.items.map(i => i.referencia).join(", ")}
+                </p>
+                <p className="text-xs text-gray-400">{formatDate(g.fecha)}</p>
               </div>
               <div className="text-right shrink-0">
-                {a.estado === "pendiente" && (
+                {g.estado === "pendiente" && (
                   <>
-                    <p className="text-sm font-bold text-red-600">{formatCurrency(a.saldo)}</p>
-                    <p className="text-xs text-gray-400">saldo</p>
+                    <p className="text-sm font-bold text-red-600">{formatCurrency(g.totalSaldo)}</p>
+                    <p className="text-xs text-gray-400">Saldo</p>
                   </>
                 )}
-                {a.estado === "entregado" && <Badge variant="success">Entregado</Badge>}
-                {a.estado === "cancelado" && <Badge variant="danger">Cancelado</Badge>}
+                {g.estado === "entregado" && <Badge variant="success">Entregado</Badge>}
+                {g.estado === "cancelado" && <Badge variant="danger">Cancelado</Badge>}
               </div>
               <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
             </Link>

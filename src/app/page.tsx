@@ -66,16 +66,18 @@ function ProfileSelectScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-[#001a33] flex flex-col items-center justify-center p-6 select-none">
+    <div className="min-h-screen bg-[#001E6E] flex flex-col items-center justify-center p-6 select-none">
       <Toaster position="top-center" />
 
       {/* Logo */}
       <div className="text-center mb-12">
-        <div className="w-20 h-20 bg-brand-gold rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-2xl">
-          <span className="text-white font-black text-2xl tracking-tight">PM</span>
-        </div>
+        <img
+          src="/logo.webp"
+          alt="Pasión Millonaria"
+          className="w-24 h-24 rounded-2xl object-contain mx-auto mb-4 shadow-2xl bg-white p-1"
+        />
         <h1 className="text-white font-bold text-2xl tracking-wide">Pasión Millonaria</h1>
-        <p className="text-blue-300 text-sm mt-1">¿Quién está usando la app?</p>
+        <p className="text-white text-sm mt-1">¿Quién está usando la app?</p>
       </div>
 
       {/* Grid de perfiles */}
@@ -85,7 +87,7 @@ function ProfileSelectScreen() {
             key={p.key}
             onClick={() => handleSelectPerfil(p)}
             className="group flex flex-col items-center gap-3 p-5 rounded-2xl
-                       bg-white/5 border border-white/10 hover:bg-white/10
+                       bg-white border border-gray-200 hover:bg-gray-50
                        active:scale-95 transition-all duration-150"
           >
             {/* Avatar */}
@@ -102,7 +104,7 @@ function ProfileSelectScreen() {
                 </div>
               )}
             </div>
-            <span className="text-white font-semibold text-sm">{p.nombre}</span>
+            <span className="text-gray-800 font-semibold text-sm">{p.nombre}</span>
             {p.rol === "admin" && (
               <span className="text-brand-gold text-xs font-medium">PIN requerido</span>
             )}
@@ -113,7 +115,7 @@ function ProfileSelectScreen() {
       {/* Modal PIN */}
       {pinModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className={`w-full max-w-xs bg-[#001a33] border border-white/20 rounded-t-3xl sm:rounded-3xl p-6
+          <div className={`w-full max-w-xs bg-[#001E6E] border border-white/20 rounded-t-3xl sm:rounded-3xl p-6
                           ${shake ? "animate-[shake_0.4s_ease-in-out]" : ""}`}>
 
             {/* Drag handle */}
@@ -121,7 +123,7 @@ function ProfileSelectScreen() {
 
             <div className="text-center mb-6">
               <div className="w-14 h-14 bg-brand-gold rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl">
-                👑
+                🏆
               </div>
               <h3 className="text-white font-bold text-lg">Admin</h3>
               <p className="text-blue-300 text-sm">Ingresa tu PIN de 4 dígitos</p>

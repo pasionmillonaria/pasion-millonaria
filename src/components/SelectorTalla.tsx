@@ -14,25 +14,26 @@ interface Props {
   seleccionada: number | null;
   onSelect: (tallaId: number) => void;
   ubicacionId?: number; // 1=tienda, 2=bodega
+  permitirSinStock?: boolean; // true cuando la prenda se va a pedir al proveedor
 }
 
-export default function SelectorTalla({ tallas, seleccionada, onSelect, ubicacionId }: Props) {
+export default function SelectorTalla({ tallas, seleccionada, onSelect, ubicacionId, permitirSinStock }: Props) {
   return (
     <div className="grid grid-cols-4 gap-2">
       {tallas.map(t => {
-        const stock = ubicacionId === 2 ? t.stock_bodega : t.stock_tienda;
         const stockTotal = t.stock_tienda + t.stock_bodega;
         const activo = seleccionada === t.talla_id;
         const sinStock = stockTotal === 0;
+        const bloqueado = sinStock && !permitirSinStock;
 
         return (
           <button
             key={t.talla_id}
-            onClick={() => !sinStock && onSelect(t.talla_id)}
-            disabled={sinStock}
+            onClick={() => !bloqueado && onSelect(t.talla_id)}
+            disabled={bloqueado}
             className={cn(
               "relative flex flex-col items-center p-3 rounded-xl border-2 transition-all duration-150",
-              sinStock
+              bloqueado
                 ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
                 : activo
                 ? "border-brand-blue bg-brand-blue text-white shadow-md scale-105"
@@ -42,8 +43,8 @@ export default function SelectorTalla({ tallas, seleccionada, onSelect, ubicacio
             <span className={cn("font-bold text-sm", activo ? "text-white" : "text-gray-900")}>
               {t.talla_nombre}
             </span>
-            <span className={cn("text-xs mt-0.5", activo ? "text-blue-100" : "text-gray-400")}>
-              {stockTotal} uds
+            <span className={cn("text-xs mt-0.5", activo ? "text-blue-100" : sinStock ? "text-orange-400" : "text-gray-400")}>
+              {sinStock && permitirSinStock ? "pedir" : `${stockTotal} uds`}
             </span>
           </button>
         );

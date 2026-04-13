@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeftRight, CheckCircle, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
-import BuscadorProducto from "@/components/BuscadorProducto";
+import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
@@ -54,6 +54,7 @@ export default function TrasladoPage() {
   const stockOrigen = origen === 1 ? (tallaSeleccionada?.stock_tienda ?? 0) : (tallaSeleccionada?.stock_bodega ?? 0);
 
   async function confirmar() {
+    if (loading) return;
     if (!producto || !tallaId) return;
     if (cantidad > stockOrigen) { toast.error("Stock insuficiente en origen"); return; }
     setLoading(true);
@@ -99,7 +100,7 @@ export default function TrasladoPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6">
+    <div className="max-w-5xl mx-auto px-4 md:px-8 pt-6">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100">
           <ChevronLeft className="w-6 h-6 text-gray-600" />
@@ -108,60 +109,67 @@ export default function TrasladoPage() {
         <h1 className="text-xl font-bold text-gray-900">Traslado</h1>
       </div>
 
-      {/* Dirección */}
-      <div className="card mb-4">
-        <h3 className="font-bold text-gray-700 mb-3">Dirección del traslado</h3>
-        <div className="flex gap-3">
-          <button onClick={() => setOrigen(1)} className={`flex-1 py-3 rounded-xl font-medium transition-colors ${origen === 1 ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
-            🏪 Tienda → 📦 Bodega
-          </button>
-          <button onClick={() => setOrigen(2)} className={`flex-1 py-3 rounded-xl font-medium transition-colors ${origen === 2 ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
-            📦 Bodega → 🏪 Tienda
-          </button>
-        </div>
-      </div>
-
-      {/* Producto */}
-      <div className="card mb-4">
-        <h3 className="font-bold text-gray-700 mb-3">Producto</h3>
-        {producto ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">{producto.referencia}</p>
-              <p className="text-xs text-gray-500">{producto.codigo}</p>
+      <div className="md:grid md:grid-cols-2 md:gap-6 md:items-start">
+        {/* Columna izquierda: Dirección + Producto */}
+        <div className="space-y-4 mb-4 md:mb-0">
+          {/* Dirección */}
+          <div className="card">
+            <h3 className="font-bold text-gray-700 mb-3">Dirección del traslado</h3>
+            <div className="flex gap-3">
+              <button onClick={() => setOrigen(1)} className={`flex-1 py-3 rounded-xl font-medium transition-colors ${origen === 1 ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                🏪 Tienda → 📦 Bodega
+              </button>
+              <button onClick={() => setOrigen(2)} className={`flex-1 py-3 rounded-xl font-medium transition-colors ${origen === 2 ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                📦 Bodega → 🏪 Tienda
+              </button>
             </div>
-            <button onClick={() => { setProducto(null); setTallaId(null); }} className="text-brand-blue text-sm font-medium">Cambiar</button>
           </div>
-        ) : (
-          <BuscadorProducto onSelect={handleSelectProducto} />
-        )}
+
+          {/* Producto */}
+          <div className="card">
+            <h3 className="font-bold text-gray-700 mb-3">Producto</h3>
+            {producto ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-900">{producto.referencia}</p>
+                  <p className="text-xs text-gray-500">{producto.categoria_nombre}</p>
+                </div>
+                <button onClick={() => { setProducto(null); setTallaId(null); }} className="text-brand-blue text-sm font-medium">Cambiar</button>
+              </div>
+            ) : (
+              <ListaProductos onSelect={handleSelectProducto} />
+            )}
+          </div>
+        </div>
+
+        {/* Columna derecha: Talla + Cantidad + Submit */}
+        <div className="space-y-4">
+          {producto && tallas.length > 0 && (
+            <div className="card">
+              <h3 className="font-bold text-gray-700 mb-3">Talla</h3>
+              <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={setTallaId} ubicacionId={origen} />
+            </div>
+          )}
+
+          {tallaId && (
+            <div className="card">
+              <h3 className="font-bold text-gray-700 mb-3">Cantidad (stock en {origen === 1 ? "tienda" : "bodega"}: {stockOrigen})</h3>
+              <div className="flex items-center gap-4 justify-center">
+                <button onClick={() => setCantidad(Math.max(1, cantidad - 1))} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">-</button>
+                <span className="text-3xl font-bold text-gray-900 w-12 text-center">{cantidad}</span>
+                <button onClick={() => setCantidad(Math.min(stockOrigen, cantidad + 1))} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">+</button>
+              </div>
+            </div>
+          )}
+
+          {tallaId && (
+            <Button className="w-full" size="lg" onClick={confirmar} loading={loading}>
+              Confirmar Traslado
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Talla */}
-      {producto && tallas.length > 0 && (
-        <div className="card mb-4">
-          <h3 className="font-bold text-gray-700 mb-3">Talla</h3>
-          <SelectorTalla tallas={tallas} seleccionada={tallaId} onSelect={setTallaId} ubicacionId={origen} />
-        </div>
-      )}
-
-      {/* Cantidad */}
-      {tallaId && (
-        <div className="card mb-4">
-          <h3 className="font-bold text-gray-700 mb-3">Cantidad (stock en {origen === 1 ? "tienda" : "bodega"}: {stockOrigen})</h3>
-          <div className="flex items-center gap-4 justify-center">
-            <button onClick={() => setCantidad(Math.max(1, cantidad - 1))} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">-</button>
-            <span className="text-3xl font-bold text-gray-900 w-12 text-center">{cantidad}</span>
-            <button onClick={() => setCantidad(Math.min(stockOrigen, cantidad + 1))} className="w-12 h-12 rounded-xl bg-gray-100 font-bold text-2xl">+</button>
-          </div>
-        </div>
-      )}
-
-      {tallaId && (
-        <Button className="w-full" size="lg" onClick={confirmar} loading={loading}>
-          Confirmar Traslado
-        </Button>
-      )}
       <div className="h-6" />
     </div>
   );

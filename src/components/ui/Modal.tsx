@@ -9,10 +9,11 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "full";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "full";
+  panelClassName?: string;
 }
 
-export default function Modal({ open, onClose, title, children, size = "md" }: ModalProps) {
+export default function Modal({ open, onClose, title, children, size = "md", panelClassName }: ModalProps) {
   // Cerrar con Escape
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -35,6 +36,9 @@ export default function Modal({ open, onClose, title, children, size = "md" }: M
     sm: "max-w-sm",
     md: "max-w-md",
     lg: "max-w-lg",
+    xl: "max-w-xl",
+    "2xl": "max-w-2xl",
+    "3xl": "max-w-3xl",
     full: "max-w-full mx-4",
   };
 
@@ -51,7 +55,8 @@ export default function Modal({ open, onClose, title, children, size = "md" }: M
         className={cn(
           "relative w-full bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl",
           "max-h-[90vh] overflow-y-auto",
-          sizes[size]
+          sizes[size],
+          panelClassName
         )}
       >
         {/* Header */}

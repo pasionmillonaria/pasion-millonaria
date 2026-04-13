@@ -6,13 +6,17 @@ export const metadata: Metadata = {
   title: "Pasión Millonaria",
   description: "Sistema de inventario y punto de venta",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/logo.webp",
+    apple: "/logo.webp",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#003366",
+  themeColor: "#003BC4",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
