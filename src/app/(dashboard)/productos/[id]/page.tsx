@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Save, Plus, X, SlidersHorizontal, Trash2, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Producto, Categoria, Linea, SistemaTalla } from "@/lib/types";
+import type { Producto, Categoria, Linea, SistemaTalla, TipoMovimiento, CanalMovimiento } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 import InputDinero from "@/components/ui/InputDinero";
@@ -147,7 +147,7 @@ export default function EditarProductoPage() {
     if (!producto) return;
     setSavingStock(true);
 
-    const inserts: object[] = [];
+    const inserts: { producto_id: number; talla_id: number; ubicacion_id: number; cantidad: number; tipo: TipoMovimiento; canal: CanalMovimiento; nota: string }[] = [];
 
     for (const row of stockRows) {
       const editado = stockEditado[row.talla_id];
