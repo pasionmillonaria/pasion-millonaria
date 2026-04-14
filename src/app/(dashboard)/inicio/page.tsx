@@ -75,19 +75,18 @@ export default function InicioPage() {
             <p className="text-xs text-gray-400">Bienvenido</p>
             <p className="font-bold text-gray-900">{profile?.nombre}</p>
           </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
-            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-          </button>
           <button
             onClick={handleSalir}
-            className="p-2 rounded-xl hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+            className="flex items-center gap-1.5 ml-1 px-2.5 py-1.5 rounded-xl border border-gray-200 hover:border-red-200 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors text-xs font-medium"
             title="Cambiar perfil"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Cambiar</span>
           </button>
         </div>
+        <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
+          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
       {/* Banner ventas del día (admin) */}
