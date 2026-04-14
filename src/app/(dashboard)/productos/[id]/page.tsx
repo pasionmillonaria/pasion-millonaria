@@ -80,7 +80,7 @@ export default function EditarProductoPage() {
     load();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function cargarStock(prodId: number, sis: string) {
+  async function cargarStock(prodId: number, sis: SistemaTalla) {
     const [{ data: tallas }, { data: stockData }] = await Promise.all([
       supabase.from("tallas").select("id, nombre").eq("sistema", sis).order("orden"),
       supabase.from("stock").select("talla_id, ubicacion_id, cantidad").eq("producto_id", prodId),
