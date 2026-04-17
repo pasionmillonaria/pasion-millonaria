@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, Save, Plus, X, SlidersHorizontal, Trash2, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Save, Plus, X, SlidersHorizontal, Trash2, AlertTriangle, Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Producto, Categoria, Linea, SistemaTalla, TipoMovimiento, CanalMovimiento } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 import InputDinero from "@/components/ui/InputDinero";
+import GestionarCategoriasModal from "@/components/GestionarCategoriasModal";
 import toast from "react-hot-toast";
 
 const SISTEMAS: { value: SistemaTalla; label: string }[] = [
@@ -45,6 +46,9 @@ export default function EditarProductoPage() {
   const [nuevaCatVisible, setNuevaCatVisible] = useState(false);
   const [nuevaCatNombre,  setNuevaCatNombre]  = useState("");
   const [guardandoCat,    setGuardandoCat]    = useState(false);
+
+  // Gestionar categorías (editar/eliminar)
+  const [gestionarCatOpen, setGestionarCatOpen] = useState(false);
 
   // ── Ajuste de stock ──────────────────────────────────────────
   const [stockRows,    setStockRows]    = useState<StockRow[]>([]);
@@ -270,9 +274,14 @@ export default function EditarProductoPage() {
           <div className="flex items-center justify-between mb-1">
             <label className="label mb-0">Categoría <span className="text-red-500">*</span></label>
             {!nuevaCatVisible && (
-              <button onClick={() => setNuevaCatVisible(true)} className="flex items-center gap-1 text-xs text-brand-blue font-medium hover:underline">
-                <Plus className="w-3 h-3" /> Nueva
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setGestionarCatOpen(true)} className="flex items-center gap-1 text-xs text-gray-500 font-medium hover:underline">
+                  <Settings className="w-3 h-3" /> Gestionar
+                </button>
+                <button onClick={() => setNuevaCatVisible(true)} className="flex items-center gap-1 text-xs text-brand-blue font-medium hover:underline">
+                  <Plus className="w-3 h-3" /> Nueva
+                </button>
+              </div>
             )}
           </div>
           {nuevaCatVisible ? (
@@ -450,6 +459,14 @@ export default function EditarProductoPage() {
           </div>
         )}
       </div>
+
+      <GestionarCategoriasModal
+        open={gestionarCatOpen}
+        onClose={() => setGestionarCatOpen(false)}
+        categorias={categorias}
+        onChange={setCategorias}
+        onDeleted={(id) => { if (categoriaId === id) setCategoriaId(null); }}
+      />
     </div>
   );
 }

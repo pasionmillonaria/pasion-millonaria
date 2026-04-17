@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Package, ChevronLeft, CheckCircle, Plus, X } from "lucide-react";
+import { Package, ChevronLeft, CheckCircle, Plus, X, Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Linea, Categoria, SistemaTalla } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import InputDinero from "@/components/ui/InputDinero";
+import GestionarCategoriasModal from "@/components/GestionarCategoriasModal";
 import toast from "react-hot-toast";
 
 const SISTEMAS: { value: SistemaTalla; label: string }[] = [
@@ -44,6 +45,9 @@ export default function NuevoProductoPage() {
   const [nuevaCatVisible, setNuevaCatVisible] = useState(false);
   const [nuevaCatNombre, setNuevaCatNombre] = useState("");
   const [guardandoCat, setGuardandoCat] = useState(false);
+
+  // Gestionar categorías (editar/eliminar)
+  const [gestionarCatOpen, setGestionarCatOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -167,12 +171,20 @@ export default function NuevoProductoPage() {
           <div className="flex items-center justify-between mb-1">
             <label className="label mb-0">Categoría <span className="text-red-500">*</span></label>
             {!nuevaCatVisible && (
-              <button
-                onClick={() => setNuevaCatVisible(true)}
-                className="flex items-center gap-1 text-xs text-brand-blue font-medium hover:underline"
-              >
-                <Plus className="w-3 h-3" /> Nueva
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setGestionarCatOpen(true)}
+                  className="flex items-center gap-1 text-xs text-gray-500 font-medium hover:underline"
+                >
+                  <Settings className="w-3 h-3" /> Gestionar
+                </button>
+                <button
+                  onClick={() => setNuevaCatVisible(true)}
+                  className="flex items-center gap-1 text-xs text-brand-blue font-medium hover:underline"
+                >
+                  <Plus className="w-3 h-3" /> Nueva
+                </button>
+              </div>
             )}
           </div>
 
@@ -234,6 +246,14 @@ export default function NuevoProductoPage() {
       </div>
 
       <div className="h-6" />
+
+      <GestionarCategoriasModal
+        open={gestionarCatOpen}
+        onClose={() => setGestionarCatOpen(false)}
+        categorias={categorias}
+        onChange={setCategorias}
+        onDeleted={(id) => { if (categoriaId === id) setCategoriaId(null); }}
+      />
     </div>
   );
 }
