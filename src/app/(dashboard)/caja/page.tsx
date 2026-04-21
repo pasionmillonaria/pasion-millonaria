@@ -1044,14 +1044,28 @@ export default function CajaPage() {
     setLoadingDelete(true);
     const reg = registros.find(r => r.id === localId);
     setDeleteId(null);
+
     if (reg?.dbId) {
-      // Primero borrar el registro de caja (tiene FK hacia movimientos)
-      await supabase.from("registros_caja").delete().eq("id", reg.dbId);
-      // Luego borrar el movimiento — al eliminarlo el stock se restaura automáticamente
-      if (reg.movimientoId) {
-        await supabase.from("movimientos").delete().eq("id", reg.movimientoId);
+      if (reg.tipo === "venta" && reg.movimientoId) {
+        // Ventas con movimiento: usar API que restaura stock correctamente
+        // y borra tanto el movimiento como el registro de caja
+        const res = await fetch("/api/eliminar-venta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ movimientoIds: [reg.movimientoId] }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json().catch(() => ({ error: "Error desconocido" }));
+          toast.error("No se pudo eliminar: " + (error ?? res.statusText));
+          setLoadingDelete(false);
+          return;
+        }
+      } else {
+        // Gastos, ingresos, caja_fuerte o ventas sin movimiento: solo borrar registro de caja
+        await supabase.from("registros_caja").delete().eq("id", reg.dbId);
       }
     }
+
     setRegistros(prev => prev.filter(r => r.id !== localId));
     setLoadingDelete(false);
     toast.success(reg?.tipo === "venta" ? "Venta eliminada — stock restaurado" : "Registro eliminado");

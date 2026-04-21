@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, LABELS_CANAL } from "@/lib/utils";
+import { buildPedidosVenta, CANALES_PEDIDO, type PedidoVentaResumen } from "@/lib/pedidos-venta";
 import type { VApartadosPendientes, VStockBajo, VResumenCajaHoy } from "@/lib/types";
 import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
@@ -39,27 +40,53 @@ export default function InicioPage() {
   const [apartados, setApartados] = useState<VApartadosPendientes[]>([]);
   const [stockBajo, setStockBajo] = useState<VStockBajo[]>([]);
   const [resumenHoy, setResumenHoy] = useState<VResumenCajaHoy[]>([]);
+  const [pedidosHoy, setPedidosHoy] = useState<PedidoVentaResumen[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function fetchData() {
     setLoading(true);
-    const [{ data: ap }, { data: sb }] = await Promise.all([
+    const inicioDia = new Date();
+    inicioDia.setHours(0, 0, 0, 0);
+    const finDia = new Date(inicioDia);
+    finDia.setDate(finDia.getDate() + 1);
+
+    const [{ data: ap }, { data: sb }, { data: ventasData }, resumenResponse] = await Promise.all([
       supabase.from("v_apartados_pendientes").select("*").eq("estado", "pendiente").order("en_tienda", { ascending: true }).order("fecha", { ascending: true }).limit(20),
       supabase.from("v_stock_bajo").select("*").limit(20),
+      supabase
+        .from("movimientos")
+        .select("id, fecha, canal, cantidad, precio_venta, descuento, metodo_pago, movimiento_ref, productos(referencia), tallas(nombre)")
+        .eq("tipo", "salida")
+        .in("canal", CANALES_PEDIDO)
+        .gte("fecha", inicioDia.toISOString())
+        .lt("fecha", finDia.toISOString())
+        .order("fecha", { ascending: false }),
+      isAdmin
+        ? supabase.from("v_resumen_caja_hoy").select("*")
+        : Promise.resolve({ data: [] as VResumenCajaHoy[] | null }),
     ]);
     setApartados(ap ?? []);
     setStockBajo(sb ?? []);
-    if (isAdmin) {
-      const { data: res } = await supabase.from("v_resumen_caja_hoy").select("*");
-      setResumenHoy(res ?? []);
-    }
+    setPedidosHoy(buildPedidosVenta((ventasData ?? []) as any[]));
+    setResumenHoy(resumenResponse.data ?? []);
     setLoading(false);
   }
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [isAdmin]);
 
   const totalVentasHoy = resumenHoy.reduce((s, r) => s + r.total, 0);
   const cantVentasHoy  = resumenHoy.reduce((s, r) => s + r.cantidad, 0);
+  const pedidosPorCanal = CANALES_PEDIDO.map(canal => ({
+    canal,
+    pedidos: pedidosHoy.filter(pedido => pedido.canal === canal),
+  }));
+
+  function formatHora(fecha: string) {
+    return new Intl.DateTimeFormat("es-CO", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(fecha));
+  }
 
   return (
     <div className="px-4 md:px-8 pt-6 max-w-7xl mx-auto">
@@ -171,6 +198,86 @@ export default function InicioPage() {
               </div>
             </div>
           )}
+
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-brand-blue" />
+                Pedidos de hoy
+              </h3>
+              {pedidosHoy.length > 0 && <Badge variant="info">{pedidosHoy.length}</Badge>}
+            </div>
+
+            {loading ? (
+              <Spinner className="py-4" />
+            ) : pedidosHoy.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-4">Sin pedidos registrados hoy</p>
+            ) : (
+              <div className="space-y-4">
+                {pedidosPorCanal.map(({ canal, pedidos }) => (
+                  <div key={canal} className="rounded-2xl border border-gray-100 p-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            canal === "venta_tienda"
+                              ? "info"
+                              : canal === "domicilio"
+                              ? "warning"
+                              : "success"
+                          }
+                        >
+                          {LABELS_CANAL[canal]}
+                        </Badge>
+                        <span className="text-xs text-gray-400">
+                          {pedidos.length} pedido{pedidos.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    </div>
+
+                    {pedidos.length === 0 ? (
+                      <p className="text-xs text-gray-400">No hay pedidos por este canal hoy.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pedidos.map((pedido) => (
+                          <Link
+                            key={pedido.key}
+                            href={`/venta/${pedido.key}`}
+                            className="block rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-[0.99] transition-all p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-gray-900 truncate">
+                                  {pedido.displayRef}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {formatHora(pedido.fecha)} · {pedido.totalUnidades} ud{pedido.totalUnidades !== 1 ? "s" : ""}
+                                </p>
+                              </div>
+                              <span className="text-xs font-medium text-brand-blue shrink-0">
+                                {isAdmin ? "Editar" : "Ver"}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              {pedido.items.map((item) => (
+                                <p
+                                  key={item.movimientoId}
+                                  className="text-xs text-gray-600 truncate"
+                                >
+                                  {item.cantidad}x {item.referencia} · Talla {item.talla}
+                                </p>
+                              ))}
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Apartados pendientes */}
           <div className="card">

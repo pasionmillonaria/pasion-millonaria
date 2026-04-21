@@ -237,28 +237,6 @@ export default function NuevoApartadoPage() {
       });
       if (abonoErr) { toast.error("Error al guardar abono: " + abonoErr.message); setLoading(false); return; }
 
-      const hoy = new Date().toISOString().split("T")[0];
-      const { data: cajaHoy } = await supabase
-        .from("caja_diaria").select("id")
-        .eq("fecha", hoy).eq("estado", "abierta").maybeSingle();
-
-      if (cajaHoy) {
-        const hora = new Date().toTimeString().slice(0, 8);
-        const esEfectivo = metodoPago === "efectivo";
-        const { error: cajaErr } = await supabase.from("registros_caja").insert({
-          caja_diaria_id: cajaHoy.id, fecha: hoy, hora,
-          tipo: "ingreso" as const,
-          descripcion: `Abono inicial apartado #${grupoId} — ${clienteNombre.trim()}`,
-          valor: abonoNum, metodo_pago: metodoPago,
-          monto_efectivo: esEfectivo ? abonoNum : 0,
-          monto_transferencia: !esEfectivo ? abonoNum : 0,
-        });
-        if (cajaErr) toast.error("Abono guardado, pero hubo un error al registrarlo en caja: " + cajaErr.message);
-      } else {
-        toast("Abono guardado, pero no hay caja abierta hoy — no aparecerá en el registro de caja", {
-          icon: "⚠️", duration: 5000,
-        });
-      }
     }
 
     toast.success(`¡${idsCreados.length > 1 ? `${idsCreados.length} apartados creados` : "Apartado creado"}!`);
