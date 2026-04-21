@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { BarChart2, TrendingUp, TrendingDown, ShoppingBag, CreditCard, Calendar, Wallet, Banknote, Smartphone, RefreshCw, Store, Truck, Globe } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, LABELS_METODO_PAGO } from "@/lib/utils";
 import Spinner from "@/components/ui/Spinner";
 import type { VResumenCaja } from "@/lib/types";
 
@@ -79,6 +79,7 @@ const METODO_ICON: Record<string, React.ReactNode> = {
   nequi:         <Smartphone className="w-4 h-4" />,
   datafono:      <CreditCard className="w-4 h-4" />,
   mixto:         <Wallet className="w-4 h-4" />,
+  sin_confirmar: <Wallet className="w-4 h-4" />,
 };
 
 const METODO_COLOR: Record<string, string> = {
@@ -87,6 +88,7 @@ const METODO_COLOR: Record<string, string> = {
   nequi:         "bg-pink-100 text-pink-700",
   datafono:      "bg-purple-100 text-purple-700",
   mixto:         "bg-amber-100 text-amber-700",
+  sin_confirmar: "bg-slate-100 text-slate-700",
 };
 
 const METODO_BAR: Record<string, string> = {
@@ -95,6 +97,7 @@ const METODO_BAR: Record<string, string> = {
   nequi:         "bg-pink-500",
   datafono:      "bg-purple-500",
   mixto:         "bg-amber-500",
+  sin_confirmar: "bg-slate-400",
 };
 
 export default function ReportesPage() {
@@ -137,7 +140,7 @@ export default function ReportesPage() {
       const ref     = (m.productos as any)?.referencia ?? "Sin ref";
       const unidades = m.cantidad as number;
       const ingresos = ((m.precio_venta ?? 0) as number) * unidades;
-      const met     = (m.metodo_pago as string) ?? "otro";
+      const met     = (m.metodo_pago as string | null) ?? "sin_confirmar";
       const canal   = (m.canal as string) ?? "venta_tienda";
 
       // Top productos
@@ -353,12 +356,13 @@ export default function ReportesPage() {
                       const colorBadge = METODO_COLOR[rm.metodo] ?? "bg-gray-100 text-gray-600";
                       const colorBar   = METODO_BAR[rm.metodo]   ?? "bg-gray-400";
                       const icon       = METODO_ICON[rm.metodo]  ?? <Wallet className="w-4 h-4" />;
+                      const label      = LABELS_METODO_PAGO[rm.metodo] ?? rm.metodo;
                       return (
                         <div key={rm.metodo}>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${colorBadge}`}>
                               {icon}
-                              <span className="capitalize">{rm.metodo}</span>
+                              <span>{label}</span>
                             </span>
                             <div className="text-right">
                               <p className="text-sm font-bold text-gray-900">{formatCurrency(rm.total)}</p>

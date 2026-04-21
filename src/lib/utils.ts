@@ -42,6 +42,7 @@ export const LABELS_METODO_PAGO: Record<string, string> = {
   transferencia: "Transferencia",
   datafono: "Datáfono",
   mixto: "Mixto",
+  sin_confirmar: "Sin confirmar",
 };
 
 export const LABELS_CANAL: Record<string, string> = {
