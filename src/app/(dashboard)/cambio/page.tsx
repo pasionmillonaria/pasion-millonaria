@@ -93,12 +93,10 @@ export default function CambioPage() {
     // Referencia compartida para vincular ambos movimientos
     const ref = `CAM-${Date.now().toString().slice(-6)}`;
 
-    // Buscar si hay caja abierta hoy (para registrar la diferencia en caja)
-    const hoy = new Date().toISOString().slice(0, 10);
+    // Buscar si hay caja abierta (para registrar la diferencia en caja)
     const { data: cajaDiaria } = await supabase
       .from("caja_diaria")
       .select("id")
-      .eq("fecha", hoy)
       .eq("estado", "abierta")
       .maybeSingle();
 
@@ -126,11 +124,14 @@ export default function CambioPage() {
     if (diferencia > 0 && cajaDiaria && movs) {
       const salidaMovId = movs[1]?.id ?? null;
       const ahora = new Date();
+      const fecha = ahora.toISOString().split("T")[0];
+      const hora = ahora.toLocaleTimeString("it-IT"); // HH:mm:ss
+
       await supabase.from("registros_caja").insert({
         caja_diaria_id:      cajaDiaria.id,
         movimiento_id:       salidaMovId,
-        fecha:               hoy,
-        hora:                ahora.toTimeString().slice(0, 5),
+        fecha:               fecha,
+        hora:                hora,
         tipo:                "venta",
         descripcion:         `Cambio: ${prodEntrada.referencia} → ${prodSalida.referencia}`,
         valor:               diferencia,

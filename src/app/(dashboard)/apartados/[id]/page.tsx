@@ -286,12 +286,41 @@ export default function ApartadoDetallePage() {
 
   async function marcarEnTienda(item: ItemGrupo) {
     if (loadingCancel) return;
-    // La prenda llegó del proveedor directamente al cliente — no pasa por inventario.
-    // Solo se actualiza el estado. Si el pedido se cancela después, sí se hará
-    // una entrada al inventario porque el producto ya está físicamente en la tienda.
+
+    // Verificar si la prenda ya está en inventario (el empleado pudo haber
+    // registrado una entrada antes de marcar como recibida)
+    const { data: stockRows } = await supabase
+      .from("stock")
+      .select("ubicacion_id, cantidad")
+      .eq("producto_id", item.producto_id)
+      .eq("talla_id", item.talla_id)
+      .gt("cantidad", 0)
+      .order("ubicacion_id", { ascending: true }) // tienda (1) primero
+      .limit(1)
+      .maybeSingle();
+
+    if (stockRows) {
+      // Hay stock: descontarlo para que quede reservado al cliente
+      const { error: movErr } = await supabase.from("movimientos").insert({
+        producto_id: item.producto_id,
+        talla_id: item.talla_id,
+        ubicacion_id: stockRows.ubicacion_id,
+        cantidad: 1,
+        tipo: "salida" as const,
+        canal: "ajuste" as const,
+        nota: `Reserva apartado — prenda recibida de proveedor`,
+      });
+      if (movErr) { toast.error("Error al descontar del inventario: " + movErr.message); return; }
+    }
+
     const { error } = await supabase.from("apartados").update({ en_tienda: true }).eq("id", item.id);
     if (error) { toast.error("Error: " + error.message); return; }
-    toast.success("Prenda marcada como recibida");
+
+    if (stockRows) {
+      toast.success("Prenda marcada como recibida — descontada del inventario");
+    } else {
+      toast.success("Prenda marcada como recibida");
+    }
     await cargarDatos();
   }
 
