@@ -17,7 +17,8 @@ export type CanalMovimiento =
   | "cambio"
   | "garantia"
   | "ajuste"
-  | "compra_proveedor";
+  | "compra_proveedor"
+  | "retiro_dueño";
 export type MetodoPago =
   | "efectivo"
   | "nequi"

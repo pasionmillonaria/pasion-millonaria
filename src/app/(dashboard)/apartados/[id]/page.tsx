@@ -366,6 +366,43 @@ export default function ApartadoDetallePage() {
     });
     if (error) { toast.error("Error: " + error.message); setLoadingAbono(false); return; }
 
+    // Registrar en caja: buscar caja abierta hoy o crearla si no existe
+    const hoy = new Date().toISOString().split("T")[0];
+    let cajaDiariaId: number | null = null;
+    const { data: cajaExistente } = await supabase
+      .from("caja_diaria").select("id, estado")
+      .eq("fecha", hoy).maybeSingle();
+
+    if (cajaExistente?.estado === "abierta") {
+      cajaDiariaId = cajaExistente.id;
+    } else if (!cajaExistente) {
+      // No hay caja hoy — crearla automáticamente
+      const { data: ultima } = await supabase
+        .from("v_resumen_caja" as any).select("saldo_final")
+        .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
+      const saldoInicial = (ultima as any)?.saldo_final ?? 0;
+      const { data: nueva } = await supabase
+        .from("caja_diaria")
+        .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
+        .select("id").single();
+      cajaDiariaId = nueva?.id ?? null;
+    }
+    // Si la caja de hoy está cerrada, no se agrega (evitar modificar un cierre ya registrado)
+
+    if (cajaDiariaId) {
+      const hora = new Date().toTimeString().slice(0, 8);
+      const esEfectivo = metodoPagoAbono === "efectivo";
+      const { error: cajaErr } = await supabase.from("registros_caja").insert({
+        caja_diaria_id: cajaDiariaId, fecha: hoy, hora,
+        tipo: "ingreso" as const,
+        descripcion: `Abono apartado #${grupoId} — ${grupo.clienteNombre}`,
+        valor: monto, metodo_pago: metodoPagoAbono,
+        monto_efectivo: esEfectivo ? monto : 0,
+        monto_transferencia: !esEfectivo ? monto : 0,
+      });
+      if (cajaErr) toast.error("Abono guardado, pero error al registrar en caja: " + cajaErr.message);
+    }
+
     const nuevoSaldo = grupo.totalSaldo - monto;
     toast.success("¡Abono registrado!");
     setModalAbono(false);

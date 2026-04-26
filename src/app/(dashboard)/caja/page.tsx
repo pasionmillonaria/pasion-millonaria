@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import {
   LayoutDashboard, Plus, Lock, Trash2, Download, AlertCircle,
@@ -573,15 +573,16 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
         {([
-          ["Total Ventas", totalVentas, "#f9fafb", "#111"],
-          ["Transferencias", ventasTransf, "#eff6ff", "#1d4ed8"],
-          ["Ventas Efectivo", ventasEfe, "#f0fdf4", "#047857"],
+          ["Total Ventas",    totalVentas,                         "#f9fafb", "#111"],
+          ["Transferencias",  ventasTransf,                        "#eff6ff", "#1d4ed8"],
+          ["Ventas Efectivo", ventasEfe,                           "#f0fdf4", "#047857"],
+          ["Comisiones",      ventas.filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000).reduce((s, r) => s + r.cantidad * 1000, 0), "#faf5ff", "#7c3aed"],
         ] as [string, number, string, string][]).map(([label, val, bg, color]) => (
-          <div key={label} style={{ flex: 1, background: bg, borderRadius: 12, padding: 14 }}>
-            <p style={{ fontSize: 10, textTransform: "uppercase", color: "#9ca3af", fontWeight: 700, margin: "0 0 4px" }}>{label}</p>
-            <p style={{ fontSize: 18, fontWeight: 900, color, margin: 0 }}>{formatCurrency(val)}</p>
+          <div key={label} style={{ background: bg, borderRadius: 12, padding: 12 }}>
+            <p style={{ fontSize: 9, textTransform: "uppercase", color: "#9ca3af", fontWeight: 700, margin: "0 0 4px" }}>{label}</p>
+            <p style={{ fontSize: 15, fontWeight: 900, color, margin: 0 }}>{formatCurrency(val)}</p>
           </div>
         ))}
       </div>
@@ -589,42 +590,57 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
       {ventas.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 6 }}>Ventas del día ({ventas.length})</p>
-          {/* Cabecera tabla */}
-          <div style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 4rem", gap: 0, padding: "5px 8px", background: "#f3f4f6", borderRadius: "6px 6px 0 0", fontSize: 9, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1 }}>
-            <span style={{ textAlign: "center" }}>Cant</span>
-            <span>Producto</span>
-            <span style={{ textAlign: "center" }}>Talla</span>
-            <span style={{ textAlign: "right" }}>Valor</span>
-            <span style={{ textAlign: "center" }}>Pago</span>
-          </div>
-          {ventas.map((v, i) => {
-            const pagoBg = v.metodoPago === "efectivo" ? "#d1fae5" : v.metodoPago === "transferencia" ? "#dbeafe" : "#ede9fe";
-            const pagoColor = v.metodoPago === "efectivo" ? "#065f46" : v.metodoPago === "transferencia" ? "#1e40af" : "#5b21b6";
-            const pagoLabel = v.metodoPago === "efectivo" ? "Efe" : v.metodoPago === "transferencia" ? "Transf" : "Mixto";
-            return (
-              <div key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2rem 1fr 3rem 5rem 4rem", gap: 0, padding: "6px 8px", alignItems: "center" }}>
-                  <span style={{ textAlign: "center", fontWeight: 900, fontSize: 12 }}>{v.cantidad}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.productoRef ?? v.descripcion ?? "Artículo"}</span>
-                  <span style={{ textAlign: "center", fontSize: 11, color: "#6b7280" }}>{v.tallaNombre ?? "—"}</span>
-                  <span style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{formatCurrency(v.valor)}</span>
-                  <div style={{ display: "flex", justifyContent: "center" }}>
-                    <span style={{ background: pagoBg, color: pagoColor, fontSize: 9, fontWeight: 800, padding: "2px 5px", borderRadius: 4 }}>{pagoLabel}</span>
-                  </div>
-                </div>
-                {v.metodoPago === "mixto" && (
-                  <div style={{ padding: "0 8px 5px", display: "flex", gap: 12, fontSize: 9, fontWeight: 700 }}>
-                    <span style={{ color: "#047857" }}>Efe: {formatCurrency(v.montoEfectivo)}</span>
-                    <span style={{ color: "#1d4ed8" }}>Transf: {formatCurrency(v.montoTransferencia)}</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", background: "#f0fdf4", borderRadius: "0 0 6px 6px", fontSize: 12, fontWeight: 800 }}>
-            <span style={{ color: "#6b7280" }}>Total ventas</span>
-            <span style={{ color: "#059669" }}>{formatCurrency(totalVentas)}</span>
-          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "2.2rem" }} />
+              <col />
+              <col style={{ width: "3.2rem" }} />
+              <col style={{ width: "5.5rem" }} />
+              <col style={{ width: "4rem" }} />
+            </colgroup>
+            <thead>
+              <tr style={{ background: "#f3f4f6", borderRadius: "6px 6px 0 0" }}>
+                {(["Cant", "Producto", "Talla", "Valor", "Pago"] as const).map((h, hi) => (
+                  <th key={h} style={{ fontSize: 9, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1, padding: "5px 6px", textAlign: hi === 0 ? "center" : hi === 3 ? "right" : hi === 4 ? "center" : "left" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ventas.map((v, i) => {
+                const pagoBg = v.metodoPago === "efectivo" ? "#d1fae5" : v.metodoPago === "transferencia" ? "#dbeafe" : "#ede9fe";
+                const pagoColor = v.metodoPago === "efectivo" ? "#065f46" : v.metodoPago === "transferencia" ? "#1e40af" : "#5b21b6";
+                const pagoLabel = v.metodoPago === "efectivo" ? "Efe" : v.metodoPago === "transferencia" ? "Transf" : "Mixto";
+                const rowBg = i % 2 === 0 ? "#fff" : "#f9fafb";
+                return (
+                  <Fragment key={i}>
+                    <tr style={{ background: rowBg, borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ textAlign: "center", fontWeight: 900, fontSize: 12, padding: "7px 6px" }}>{v.cantidad}</td>
+                      <td style={{ fontSize: 12, fontWeight: 600, padding: "7px 6px", wordBreak: "break-word" }}>{v.productoRef ?? v.descripcion ?? "Artículo"}</td>
+                      <td style={{ textAlign: "center", fontSize: 11, color: "#6b7280", padding: "7px 6px" }}>{v.tallaNombre ?? "—"}</td>
+                      <td style={{ textAlign: "right", fontWeight: 800, fontSize: 12, padding: "7px 6px" }}>{formatCurrency(v.valor)}</td>
+                      <td style={{ textAlign: "center", padding: "7px 6px" }}>
+                        <span style={{ background: pagoBg, color: pagoColor, fontSize: 9, fontWeight: 800, padding: "2px 5px", borderRadius: 4 }}>{pagoLabel}</span>
+                      </td>
+                    </tr>
+                    {v.metodoPago === "mixto" && (
+                      <tr style={{ background: rowBg }}>
+                        <td colSpan={5} style={{ padding: "0 8px 5px", fontSize: 9, fontWeight: 700 }}>
+                          <span style={{ color: "#047857", marginRight: 12 }}>Efe: {formatCurrency(v.montoEfectivo)}</span>
+                          <span style={{ color: "#1d4ed8" }}>Transf: {formatCurrency(v.montoTransferencia)}</span>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: "#f0fdf4" }}>
+                <td colSpan={3} style={{ padding: "6px 8px", fontSize: 12, fontWeight: 800, color: "#6b7280" }}>Total ventas</td>
+                <td colSpan={2} style={{ textAlign: "right", padding: "6px 8px", fontSize: 12, fontWeight: 800, color: "#059669" }}>{formatCurrency(totalVentas)}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
 
@@ -671,14 +687,14 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
 
       <div style={{ borderTop: "2px solid #e5e7eb", paddingTop: 20 }}>
         <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 12 }}>Cuenta de Caja</p>
-        <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
           <div style={{ flex: 2, background: "#eff6ff", borderRadius: 12, padding: 16 }}>
             {([
-              ["Saldo inicial", saldoInicial, false],
-              ["+ Ventas efectivo", ventasEfe, false],
-              ["+ Ingresos extra (efe)", ingresosEfe, false],
-              ["− Gastos efectivo", gastosEfe, true],
-              ["− Guardado", totalGuardado, true],
+              ["Saldo inicial",          saldoInicial,  false],
+              ["+ Ventas efectivo",      ventasEfe,     false],
+              ["+ Ingresos extra (efe)", ingresosEfe,   false],
+              ["− Gastos efectivo",      gastosEfe,     true],
+              ["− Guardado",             totalGuardado, true],
             ] as [string, number, boolean][]).map(([lbl, val, neg]) => (
               <div key={lbl} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 5, color: neg ? "#dc2626" : "#374151" }}>
                 <span>{lbl}</span>
@@ -686,29 +702,24 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
               </div>
             ))}
             <div style={{ borderTop: "1px solid #bfdbfe", paddingTop: 8, marginTop: 8, display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontWeight: 900, fontSize: 13, color: "#1d4ed8" }}>Debe haber en caja</span>
-              <span style={{ fontWeight: 900, fontSize: 16, color: "#1d4ed8" }}>{formatCurrency(debeHaber)}</span>
+              <span style={{ fontSize: 12, color: "#6b7280" }}>Debe haber en caja</span>
+              <span style={{ fontWeight: 700, fontSize: 13, color: "#6b7280" }}>{formatCurrency(debeHaber)}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-              <span style={{ fontSize: 12, color: "#6b7280" }}>Contado real</span>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{formatCurrency(efectivoContado)}</span>
+            {/* Contado real: número protagonista */}
+            <div style={{ background: "#1d4ed8", borderRadius: 10, padding: "12px 16px", marginTop: 10, textAlign: "center" }}>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", fontWeight: 700, margin: "0 0 4px", letterSpacing: 1 }}>En caja</p>
+              <p style={{ fontSize: 30, fontWeight: 900, color: "#fff", margin: 0 }}>{formatCurrency(efectivoContado)}</p>
             </div>
             {diferencia !== 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, color: diferencia > 0 ? "#059669" : "#dc2626" }}>
-                <span style={{ fontSize: 12 }}>Diferencia</span>
-                <span style={{ fontWeight: 800, fontSize: 13 }}>{diferencia > 0 ? "+" : ""}{formatCurrency(diferencia)}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, padding: "6px 10px", background: diferencia > 0 ? "#f0fdf4" : "#fef2f2", borderRadius: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: diferencia > 0 ? "#059669" : "#dc2626" }}>Diferencia</span>
+                <span style={{ fontWeight: 900, fontSize: 15, color: diferencia > 0 ? "#059669" : "#dc2626" }}>{diferencia > 0 ? "+" : ""}{formatCurrency(diferencia)}</span>
               </div>
             )}
           </div>
-          <div style={{ flex: 1, background: "#111827", borderRadius: 12, padding: 16, color: "#fff" }}>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", fontWeight: 700, marginBottom: 12 }}>Guardado (neto)</p>
-            <p style={{ fontSize: 22, fontWeight: 900, margin: 0 }}>{formatCurrency(saldoGuardado)}</p>
-            {totalIngresos > 0 && (
-              <>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", margin: "12px 0 4px" }}>Ingresos extra</p>
-                <p style={{ fontSize: 16, fontWeight: 700, color: "#60a5fa", margin: 0 }}>{formatCurrency(totalIngresos)}</p>
-              </>
-            )}
+          <div style={{ background: "#111827", borderRadius: 12, padding: "12px 14px", color: "#fff", alignSelf: "flex-start" }}>
+            <p style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", fontWeight: 700, margin: "0 0 6px" }}>Guardado (neto)</p>
+            <p style={{ fontSize: 20, fontWeight: 900, margin: 0 }}>{formatCurrency(saldoGuardado)}</p>
           </div>
         </div>
       </div>
@@ -1160,7 +1171,7 @@ export default function CajaPage() {
 
       {/* Reporte oculto para html2canvas */}
       {reporteParams && (
-        <div style={{ position: "absolute", left: -9999, top: 0 }}>
+        <div style={{ position: "fixed", left: -9999, top: 0, pointerEvents: "none", zIndex: -1 }}>
           <ReporteCierre {...reporteParams} />
         </div>
       )}

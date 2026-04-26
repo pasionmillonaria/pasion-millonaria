@@ -15,11 +15,14 @@ export function formatCurrency(amount: number): string {
 }
 
 export function formatDate(dateStr: string): string {
+  // Forzar hora local: "2026-04-25" sin hora se interpreta como UTC medianoche,
+  // lo que en Colombia (UTC-5) aparece como el día anterior.
+  const d = dateStr.includes("T") ? new Date(dateStr) : new Date(dateStr + "T00:00:00");
   return new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-  }).format(new Date(dateStr));
+  }).format(d);
 }
 
 export function formatDateTime(dateStr: string): string {
@@ -54,6 +57,7 @@ export const LABELS_CANAL: Record<string, string> = {
   garantia: "Garantía",
   ajuste: "Ajuste",
   compra_proveedor: "Compra Proveedor",
+  retiro_dueño: "Retiro Dueño",
 };
 
 export const LABELS_ESTADO_APARTADO: Record<string, string> = {

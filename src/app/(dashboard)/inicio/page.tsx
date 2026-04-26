@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ShoppingBag, PackagePlus, Bookmark, ArrowLeftRight,
-  AlertTriangle, RefreshCw, ChevronRight, Eye, TrendingUp, LogOut,
+  AlertTriangle, RefreshCw, ChevronRight, Eye, TrendingUp, LogOut, UserMinus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -25,6 +25,7 @@ const accionesAdmin = [
 const accionesExtra = [
   { href: "/devolucion", icon: RefreshCw,      color: "bg-orange-100", iconColor: "text-orange-600", label: "Devolución",  desc: "Cliente devuelve" },
   { href: "/cambio",     icon: ArrowLeftRight, color: "bg-blue-100",   iconColor: "text-blue-600",   label: "Cambio",      desc: "Cambio de producto" },
+  { href: "/retiro",     icon: UserMinus,      color: "bg-gray-100",   iconColor: "text-gray-600",   label: "Retiro",      desc: "Uso personal dueño" },
 ];
 
 export default function InicioPage() {
