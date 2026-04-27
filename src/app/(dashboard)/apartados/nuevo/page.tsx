@@ -231,6 +231,7 @@ export default function NuevoApartadoPage() {
     if (abonoNum > 0 && grupoId) {
       const { error: abonoErr } = await supabase.from("abonos").insert({
         apartado_id: grupoId,
+        grupo_id: grupoId,
         monto: abonoNum,
         metodo_pago: metodoPago,
         registrado_por: null,

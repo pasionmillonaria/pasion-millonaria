@@ -360,6 +360,7 @@ export default function ApartadoDetallePage() {
     // Registrar el abono como una sola entrada contra el primer apartado del grupo
     const { error } = await supabase.from("abonos").insert({
       apartado_id: grupoId,
+      grupo_id: grupoId,
       monto,
       metodo_pago: metodoPagoAbono,
       registrado_por: null,
