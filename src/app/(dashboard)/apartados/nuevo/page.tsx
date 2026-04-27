@@ -227,10 +227,9 @@ export default function NuevoApartadoPage() {
       }
     }
 
-    // Registrar abono inicial a nivel del pedido y vincularlo a la caja si está abierta
+    // Registrar abono inicial y vincularlo a la caja si está abierta
     if (abonoNum > 0 && grupoId) {
       const { error: abonoErr } = await supabase.from("abonos").insert({
-        grupo_id: grupoId,
         apartado_id: grupoId,
         monto: abonoNum,
         metodo_pago: metodoPago,

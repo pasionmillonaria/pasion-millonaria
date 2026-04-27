@@ -299,23 +299,20 @@ export interface Database {
       abonos: {
         Row: {
           id: number;
-          grupo_id: number;
-          apartado_id: number | null;
+          apartado_id: number;
           monto: number;
           metodo_pago: MetodoPago;
           fecha: string;
           registrado_por: string | null;
         };
         Insert: {
-          grupo_id: number;
-          apartado_id?: number | null;
+          apartado_id: number;
           monto: number;
           metodo_pago: MetodoPago;
           registrado_por?: string | null;
         };
         Update: {
-          grupo_id?: number;
-          apartado_id?: number | null;
+          apartado_id?: number;
           monto?: number;
           metodo_pago?: MetodoPago;
           registrado_por?: string | null;
