@@ -105,7 +105,7 @@ export default function HistorialDetallePage() {
   const gastos = registros.filter(r => r.tipo === "gasto");
   const ingresos = registros.filter(r => r.tipo === "ingreso");
   const cajaFuerteList = registros.filter(r => r.tipo === "caja_fuerte");
-  const totalVentas = (caja.total_efectivo ?? 0) + (caja.total_transferencias ?? 0);
+  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + ingresos.reduce((s, r) => s + r.valor, 0);
   const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
   const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
   const ingresosElectronicos = ingresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);

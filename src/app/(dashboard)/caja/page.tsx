@@ -560,9 +560,9 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
   const gastos = registros.filter(r => r.tipo === "gasto");
   const ingresos = registros.filter(r => r.tipo === "ingreso");
   const cajaFuerteList = registros.filter(r => r.tipo === "caja_fuerte");
-  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0);
-  const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
+  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + totalIngresos;
+  const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const guardadoList = cajaFuerteList.filter(r => r.valor > 0);
   const retiroList   = cajaFuerteList.filter(r => r.valor < 0);
   const totalGuardado  = guardadoList.reduce((s, r) => s + r.valor, 0);
@@ -845,12 +845,12 @@ export default function CajaPage() {
   const ingresos = registros.filter(r => r.tipo === "ingreso");
   const cajaFuerteItems = registros.filter(r => r.tipo === "caja_fuerte" && r.valor > 0);
   const retiroItems     = registros.filter(r => r.tipo === "caja_fuerte" && r.valor < 0);
-  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0);
+  const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
+  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + totalIngresos;
   const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const comisiones = ventas
     .filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000)
     .reduce((s, r) => s + r.cantidad * 1000, 0);
-  const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
   // Lo que salió de la caja hacia el guardado
   const totalGuardado = cajaFuerteItems.reduce((s, r) => s + r.valor, 0);
   // Lo que salió del guardado hacia afuera (pago mercancía, etc.)
