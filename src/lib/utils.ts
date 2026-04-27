@@ -35,6 +35,17 @@ export function formatDateTime(dateStr: string): string {
   }).format(new Date(dateStr));
 }
 
+export function getLocalDateString(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function getLocalTimeString(date = new Date()): string {
+  return date.toTimeString().slice(0, 8);
+}
+
 export function generateRef(prefix: string, num: number): string {
   return `${prefix}-${String(num).padStart(4, "0")}`;
 }

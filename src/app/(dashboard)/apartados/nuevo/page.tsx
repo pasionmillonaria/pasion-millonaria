@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bookmark, CheckCircle, ChevronLeft, UserPlus, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, getLocalDateString, getLocalTimeString } from "@/lib/utils";
 import InputDinero from "@/components/ui/InputDinero";
 import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
@@ -238,7 +238,7 @@ export default function NuevoApartadoPage() {
       if (abonoErr) { toast.error("Error al guardar abono: " + abonoErr.message); setLoading(false); return; }
 
       // Registrar en caja: buscar caja abierta hoy o crearla si no existe
-      const hoy = new Date().toISOString().split("T")[0];
+      const hoy = getLocalDateString();
       let cajaDiariaId: number | null = null;
       const { data: cajaExistente } = await supabase
         .from("caja_diaria").select("id, estado")
@@ -259,7 +259,7 @@ export default function NuevoApartadoPage() {
       }
 
       if (cajaDiariaId) {
-        const hora = new Date().toTimeString().slice(0, 8);
+        const hora = getLocalTimeString();
         const esEfectivo = metodoPago === "efectivo";
         const { error: cajaErr } = await supabase.from("registros_caja").insert({
           caja_diaria_id: cajaDiariaId, fecha: hoy, hora,

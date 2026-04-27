@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, getLocalDateString, getLocalTimeString } from "@/lib/utils";
 import BuscadorProducto from "@/components/BuscadorProducto";
 import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
@@ -65,18 +65,14 @@ function genId() {
 
 function getNow() {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
   return {
-    fecha: `${year}-${month}-${day}`,
-    hora: now.toTimeString().slice(0, 8),
+    fecha: getLocalDateString(now),
+    hora: getLocalTimeString(now),
   };
 }
 
 function getHoy() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return getLocalDateString();
 }
 
 const TIPO_LABEL: Record<TipoRegistroCaja, string> = {

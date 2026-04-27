@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Plus, CheckCircle, XCircle, Phone, Pencil, Store, PackageCheck, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, getLocalDateString, getLocalTimeString } from "@/lib/utils";
 import InputDinero from "@/components/ui/InputDinero";
 import SelectorTalla from "@/components/SelectorTalla";
 import ListaProductos from "@/components/ListaProductos";
@@ -367,7 +367,7 @@ export default function ApartadoDetallePage() {
     if (error) { toast.error("Error: " + error.message); setLoadingAbono(false); return; }
 
     // Registrar en caja: buscar caja abierta hoy o crearla si no existe
-    const hoy = new Date().toISOString().split("T")[0];
+    const hoy = getLocalDateString();
     let cajaDiariaId: number | null = null;
     const { data: cajaExistente } = await supabase
       .from("caja_diaria").select("id, estado")
@@ -390,7 +390,7 @@ export default function ApartadoDetallePage() {
     // Si la caja de hoy está cerrada, no se agrega (evitar modificar un cierre ya registrado)
 
     if (cajaDiariaId) {
-      const hora = new Date().toTimeString().slice(0, 8);
+      const hora = getLocalTimeString();
       const esEfectivo = metodoPagoAbono === "efectivo";
       const { error: cajaErr } = await supabase.from("registros_caja").insert({
         caja_diaria_id: cajaDiariaId, fecha: hoy, hora,
