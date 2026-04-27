@@ -237,28 +237,37 @@ export default function NuevoApartadoPage() {
       });
       if (abonoErr) { toast.error("Error al guardar abono: " + abonoErr.message); setLoading(false); return; }
 
-      // Registrar en caja: buscar caja abierta hoy o crearla si no existe
-      const hoy = getLocalDateString();
+      // Registrar en caja: buscar caja abierta
       let cajaDiariaId: number | null = null;
-      const { data: cajaExistente } = await supabase
-        .from("caja_diaria").select("id, estado")
-        .eq("fecha", hoy).maybeSingle();
+      const { data: cajaAbierta } = await supabase
+        .from("caja_diaria").select("id")
+        .eq("estado", "abierta")
+        .order("id", { ascending: false }).limit(1).maybeSingle();
 
-      if (cajaExistente?.estado === "abierta") {
-        cajaDiariaId = cajaExistente.id;
-      } else if (!cajaExistente) {
-        const { data: ultima } = await supabase
-          .from("v_resumen_caja" as any).select("saldo_final")
-          .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
-        const saldoInicial = (ultima as any)?.saldo_final ?? 0;
-        const { data: nueva } = await supabase
-          .from("caja_diaria")
-          .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
-          .select("id").single();
-        cajaDiariaId = nueva?.id ?? null;
+      if (cajaAbierta) {
+        cajaDiariaId = cajaAbierta.id;
+      } else {
+        // No hay caja abierta. Intentar crear una para hoy si no existe.
+        const hoy = getLocalDateString();
+        const { data: cajaHoy } = await supabase
+          .from("caja_diaria").select("id, estado")
+          .eq("fecha", hoy).maybeSingle();
+          
+        if (!cajaHoy) {
+          const { data: ultima } = await supabase
+            .from("v_resumen_caja" as any).select("saldo_final")
+            .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
+          const saldoInicial = (ultima as any)?.saldo_final ?? 0;
+          const { data: nueva } = await supabase
+            .from("caja_diaria")
+            .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
+            .select("id").maybeSingle();
+          cajaDiariaId = nueva?.id ?? null;
+        }
       }
 
       if (cajaDiariaId) {
+        const hoy = getLocalDateString();
         const hora = getLocalTimeString();
         const esEfectivo = metodoPago === "efectivo";
         const { error: cajaErr } = await supabase.from("registros_caja").insert({
