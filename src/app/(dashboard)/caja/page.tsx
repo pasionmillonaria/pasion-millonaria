@@ -37,7 +37,7 @@ interface RegistroLocal {
   tallaNombre: string | null;
   cantidad: number;
   valor: number;
-  metodoPago: "efectivo" | "transferencia" | "mixto" | null;
+  metodoPago: MetodoPago | null;
   montoEfectivo: number;
   montoTransferencia: number;
   pending?: boolean;
@@ -73,6 +73,26 @@ function getNow() {
 
 function getHoy() {
   return getLocalDateString();
+}
+
+function esPagoElectronico(metodo: MetodoPago | null) {
+  return metodo !== null && metodo !== "efectivo" && metodo !== "mixto";
+}
+
+function getMetodoBadge(metodo: MetodoPago | null) {
+  if (metodo === "efectivo") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (metodo === "transferencia") return "bg-blue-50 text-blue-700 border-blue-200";
+  if (metodo === "datafono") return "bg-violet-50 text-violet-700 border-violet-200";
+  if (metodo === "nequi") return "bg-pink-50 text-pink-700 border-pink-200";
+  return "bg-purple-50 text-purple-700 border-purple-200";
+}
+
+function getMetodoLabel(metodo: MetodoPago | null) {
+  if (metodo === "efectivo") return "Efe";
+  if (metodo === "transferencia") return "Transf";
+  if (metodo === "datafono") return "Dat";
+  if (metodo === "nequi") return "Nequi";
+  return "Mixto";
 }
 
 const TIPO_LABEL: Record<TipoRegistroCaja, string> = {
@@ -129,7 +149,7 @@ function ModalVenta({ onClose, onSave }: {
   const [precioLibre, setPrecioLibre] = useState("");
 
   // Compartido
-  const [metodo, setMetodo] = useState<"efectivo" | "transferencia" | "mixto">("efectivo");
+  const [metodo, setMetodo] = useState<"efectivo" | "transferencia" | "datafono" | "mixto">("efectivo");
   const [montoEfe, setMontoEfe] = useState(0);
   const [montoTransf, setMontoTransf] = useState(0);
 
@@ -141,7 +161,7 @@ function ModalVenta({ onClose, onSave }: {
 
   useEffect(() => {
     if (metodo === "efectivo") { setMontoEfe(total); setMontoTransf(0); }
-    else if (metodo === "transferencia") { setMontoTransf(total); setMontoEfe(0); }
+    else if (metodo === "transferencia" || metodo === "datafono") { setMontoTransf(total); setMontoEfe(0); }
   }, [metodo, total]);
 
   const mixtoValido = metodo !== "mixto" || Math.abs(montoEfe + montoTransf - total) < 1;
@@ -183,7 +203,7 @@ function ModalVenta({ onClose, onSave }: {
       tallaId, tallaNombre, cantidad: cantidadInv, valor: totalInv,
       metodoPago: metodo,
       montoEfectivo: metodo === "efectivo" ? totalInv : metodo === "mixto" ? montoEfe : 0,
-      montoTransferencia: metodo === "transferencia" ? totalInv : metodo === "mixto" ? montoTransf : 0,
+      montoTransferencia: metodo !== "efectivo" && metodo !== "mixto" ? totalInv : metodo === "mixto" ? montoTransf : 0,
     });
     onClose();
   }
@@ -199,7 +219,7 @@ function ModalVenta({ onClose, onSave }: {
       cantidad: cantidadLibre, valor: totalLibre,
       metodoPago: metodo,
       montoEfectivo: metodo === "efectivo" ? totalLibre : metodo === "mixto" ? montoEfe : 0,
-      montoTransferencia: metodo === "transferencia" ? totalLibre : metodo === "mixto" ? montoTransf : 0,
+      montoTransferencia: metodo !== "efectivo" && metodo !== "mixto" ? totalLibre : metodo === "mixto" ? montoTransf : 0,
     });
     onClose();
   }
@@ -209,11 +229,11 @@ function ModalVenta({ onClose, onSave }: {
     <div className="space-y-4">
       <div>
         <label className="label">Método de pago</label>
-        <div className="grid grid-cols-3 gap-2">
-          {(["efectivo", "transferencia", "mixto"] as const).map(m => (
+        <div className="grid grid-cols-4 gap-2">
+          {(["efectivo", "transferencia", "datafono", "mixto"] as const).map(m => (
             <button key={m} onClick={() => setMetodo(m)}
               className={`py-2 px-3 rounded-xl text-sm font-medium capitalize transition-colors ${metodo === m ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>
-              {m === "efectivo" ? "Efectivo" : m === "transferencia" ? "Transferencia" : "Mixto"}
+              {m === "efectivo" ? "Efectivo" : m === "transferencia" ? "Transferencia" : m === "datafono" ? "Datáfono" : "Mixto"}
             </button>
           ))}
         </div>
@@ -550,6 +570,8 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
   const saldoGuardado  = totalGuardado - totalRetiros;
   const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
   const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
+  const ingresosElectronicos = ingresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
+  const totalElectronico = ventasTransf + ingresosElectronicos;
   const gastosEfe = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   const ingresosEfe = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   const debeHaber = saldoInicial + ventasEfe + ingresosEfe - gastosEfe - totalGuardado;
@@ -572,7 +594,7 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
         {([
           ["Total Ventas",    totalVentas,                         "#f9fafb", "#111"],
-          ["Transferencias",  ventasTransf,                        "#eff6ff", "#1d4ed8"],
+          ["Transferencias",  totalElectronico,                    "#eff6ff", "#1d4ed8"],
           ["Ventas Efectivo", ventasEfe,                           "#f0fdf4", "#047857"],
           ["Comisiones",      ventas.filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000).reduce((s, r) => s + r.cantidad * 1000, 0), "#faf5ff", "#7c3aed"],
         ] as [string, number, string, string][]).map(([label, val, bg, color]) => (
@@ -603,9 +625,9 @@ function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: Repo
             </thead>
             <tbody>
               {ventas.map((v, i) => {
-                const pagoBg = v.metodoPago === "efectivo" ? "#d1fae5" : v.metodoPago === "transferencia" ? "#dbeafe" : "#ede9fe";
-                const pagoColor = v.metodoPago === "efectivo" ? "#065f46" : v.metodoPago === "transferencia" ? "#1e40af" : "#5b21b6";
-                const pagoLabel = v.metodoPago === "efectivo" ? "Efe" : v.metodoPago === "transferencia" ? "Transf" : "Mixto";
+                const pagoBg = v.metodoPago === "efectivo" ? "#d1fae5" : v.metodoPago === "transferencia" ? "#dbeafe" : v.metodoPago === "datafono" ? "#ede9fe" : v.metodoPago === "nequi" ? "#fce7f3" : "#ede9fe";
+                const pagoColor = v.metodoPago === "efectivo" ? "#065f46" : v.metodoPago === "transferencia" ? "#1e40af" : v.metodoPago === "datafono" ? "#6d28d9" : v.metodoPago === "nequi" ? "#be185d" : "#5b21b6";
+                const pagoLabel = v.metodoPago === "efectivo" ? "Efe" : v.metodoPago === "transferencia" ? "Transf" : v.metodoPago === "datafono" ? "Dat" : v.metodoPago === "nequi" ? "Nequi" : "Mixto";
                 const rowBg = i % 2 === 0 ? "#fff" : "#f9fafb";
                 return (
                   <Fragment key={i}>
@@ -837,6 +859,8 @@ export default function CajaPage() {
   const saldoGuardadoNeto = totalGuardado - totalRetiros;
   const ventasEfectivo = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
   const ventasTransferencia = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
+  const ingresosElectronicos = ingresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
+  const totalTransferencias = ventasTransferencia + ingresosElectronicos;
   const gastosEfectivo = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   const ingresosEfectivo = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   // Solo se resta lo que salió de la caja al guardado, no los retiros del guardado
@@ -1214,7 +1238,7 @@ export default function CajaPage() {
             {[
               { label: "Ventas", value: totalVentas, color: "text-green-600", bg: "bg-green-50" },
               { label: "Efectivo", value: ventasEfectivo, color: "text-emerald-700", bg: "bg-emerald-50" },
-              { label: "Transferencias", value: ventasTransferencia, color: "text-blue-600", bg: "bg-blue-50" },
+              { label: "Transferencias", value: totalTransferencias, color: "text-blue-600", bg: "bg-blue-50" },
               { label: "Comisiones", value: comisiones, color: "text-violet-600", bg: "bg-violet-50" },
             ].map(item => (
               <div key={item.label} className={`${item.bg} rounded-2xl p-4`}>
@@ -1249,6 +1273,7 @@ export default function CajaPage() {
                   <div className="flex justify-between"><span>Saldo inicial</span><span>{formatCurrency(saldoInicial)}</span></div>
                   {ventasEfectivo > 0 && <div className="flex justify-between"><span>+ Ventas efectivo</span><span className="text-green-300">{formatCurrency(ventasEfectivo)}</span></div>}
                   {ventasTransferencia > 0 && <div className="flex justify-between opacity-60"><span>+ Ventas transferencia</span><span>{formatCurrency(ventasTransferencia)}</span></div>}
+                  {ingresosElectronicos > 0 && <div className="flex justify-between opacity-60"><span>+ Ingresos transferencia</span><span>{formatCurrency(ingresosElectronicos)}</span></div>}
                   {ingresosEfectivo > 0 && <div className="flex justify-between"><span>+ Ingresos extra</span><span className="text-green-300">{formatCurrency(ingresosEfectivo)}</span></div>}
                   {gastosEfectivo > 0 && <div className="flex justify-between"><span>− Gastos</span><span className="text-red-300">{formatCurrency(gastosEfectivo)}</span></div>}
                   {totalGuardado > 0 && <div className="flex justify-between"><span>− Guardado</span><span className="text-amber-300">{formatCurrency(totalGuardado)}</span></div>}
@@ -1317,13 +1342,8 @@ export default function CajaPage() {
                   : "text-red-600";
 
                 if (r.tipo === "venta") {
-                  const pagoColor =
-                    r.metodoPago === "efectivo"      ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                    r.metodoPago === "transferencia" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                                       "bg-purple-50 text-purple-700 border-purple-200";
-                  const pagoLabel =
-                    r.metodoPago === "efectivo"      ? "Efe" :
-                    r.metodoPago === "transferencia" ? "Transf" : "Mixto";
+                  const pagoColor = getMetodoBadge(r.metodoPago);
+                  const pagoLabel = getMetodoLabel(r.metodoPago);
                   return (
                     <div key={r.id} className={`${getTipoRow(r.tipo, r.valor)} rounded-xl overflow-hidden ${r.pending ? "opacity-60" : ""}`}>
                       <div className={`grid items-center px-3 py-2.5 ${cajaEstado === "abierta" ? "grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem_2rem]" : "grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem]"}`}>

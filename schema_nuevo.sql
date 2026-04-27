@@ -194,6 +194,7 @@ CREATE TABLE clientes (
 CREATE TABLE apartados (
   id          bigserial    PRIMARY KEY,
   fecha       timestamptz  NOT NULL DEFAULT now(),
+  grupo_id    bigint,
   cliente_id  bigint       NOT NULL REFERENCES clientes(id),
   producto_id bigint       NOT NULL REFERENCES productos(id),
   talla_id    bigint       NOT NULL REFERENCES tallas(id),
@@ -206,7 +207,8 @@ CREATE TABLE apartados (
 
 CREATE TABLE abonos (
   id              bigserial    PRIMARY KEY,
-  apartado_id     bigint       NOT NULL REFERENCES apartados(id),
+  grupo_id        bigint       NOT NULL REFERENCES apartados(id),
+  apartado_id     bigint       REFERENCES apartados(id),
   monto           numeric(12,2) NOT NULL CHECK (monto > 0),
   metodo_pago     varchar(20)  NOT NULL,
   fecha           timestamptz  NOT NULL DEFAULT now(),
@@ -309,24 +311,38 @@ WHERE m.tipo = 'salida'
 -- ─────────────────────────────────────────
 -- Saldo de apartados calculado en tiempo real desde abonos
 CREATE VIEW v_apartados_pendientes AS
+WITH totales_apartado AS (
+  SELECT
+    COALESCE(grupo_id, id) AS grupo_id,
+    SUM(CASE WHEN estado <> 'cancelado' THEN precio ELSE 0 END) AS total_precio_activo
+  FROM apartados
+  GROUP BY COALESCE(grupo_id, id)
+),
+totales_abonos AS (
+  SELECT grupo_id, SUM(monto) AS total_abonado
+  FROM abonos
+  GROUP BY grupo_id
+)
 SELECT
   a.id,
   a.fecha,
+  COALESCE(a.grupo_id, a.id) AS grupo_id,
+  a.estado,
+  a.precio,
+  a.en_tienda,
+  a.observacion,
   c.nombre    AS cliente_nombre,
   c.telefono  AS cliente_telefono,
   p.referencia,
   t.nombre    AS talla,
-  a.precio,
-  COALESCE(SUM(ab.monto), 0)               AS total_abonado,
-  a.precio - COALESCE(SUM(ab.monto), 0)    AS saldo,
-  a.estado
+  COALESCE(tab.total_abonado, 0) AS total_abonado,
+  GREATEST(COALESCE(ta.total_precio_activo, 0) - COALESCE(tab.total_abonado, 0), 0) AS saldo
 FROM apartados a
 JOIN clientes  c  ON c.id = a.cliente_id
 JOIN productos p  ON p.id = a.producto_id
 JOIN tallas    t  ON t.id = a.talla_id
-LEFT JOIN abonos ab ON ab.apartado_id = a.id
-GROUP BY a.id, a.fecha, c.nombre, c.telefono,
-         p.referencia, t.nombre, a.precio, a.estado;
+LEFT JOIN totales_apartado ta ON ta.grupo_id = COALESCE(a.grupo_id, a.id)
+LEFT JOIN totales_abonos tab ON tab.grupo_id = COALESCE(a.grupo_id, a.id);
 
 -- ─────────────────────────────────────────
 -- Resumen de caja del día actual

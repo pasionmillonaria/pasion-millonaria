@@ -21,8 +21,6 @@ interface ItemGrupo {
   referencia: string;
   talla: string;
   precio: number;
-  total_abonado: number;
-  saldo: number;
   estado: string;
   en_tienda: boolean;
   producto_id: number;
@@ -109,9 +107,15 @@ export default function ApartadoDetallePage() {
     if (!items || items.length === 0) { setLoading(false); return; }
 
     const apartadoIds = items.map(a => a.id);
+    const grupoLookupId = items[0].grupo_id ?? items[0].id;
+    const filtroLegacy = apartadoIds.join(",");
 
     const [{ data: abonos }, { data: rawAps }] = await Promise.all([
-      supabase.from("abonos").select("*").in("apartado_id", apartadoIds).order("fecha", { ascending: false }),
+      supabase
+        .from("abonos")
+        .select("*")
+        .or(`grupo_id.eq.${grupoLookupId},apartado_id.in.(${filtroLegacy})`)
+        .order("fecha", { ascending: false }),
       supabase.from("apartados").select("id, producto_id, talla_id, en_tienda, cliente_id").in("id", apartadoIds),
     ]);
 
@@ -122,8 +126,6 @@ export default function ApartadoDetallePage() {
         referencia: a.referencia,
         talla: a.talla,
         precio: a.precio,
-        total_abonado: a.total_abonado,
-        saldo: a.saldo,
         estado: a.estado,
         en_tienda: raw?.en_tienda ?? false,
         producto_id: raw?.producto_id ?? 0,
@@ -132,9 +134,11 @@ export default function ApartadoDetallePage() {
       };
     });
 
-    const totalPrecio = itemsDetalle.reduce((s, i) => s + i.precio, 0);
-    const totalAbonado = itemsDetalle.reduce((s, i) => s + i.total_abonado, 0);
-    const totalSaldo = itemsDetalle.reduce((s, i) => s + i.saldo, 0);
+    const totalPrecio = itemsDetalle
+      .filter(i => i.estado !== "cancelado")
+      .reduce((s, i) => s + i.precio, 0);
+    const totalAbonado = (abonos ?? []).reduce((s, ab) => s + ab.monto, 0);
+    const totalSaldo = Math.max(totalPrecio - totalAbonado, 0);
     const estadoGrupo = itemsDetalle.some(i => i.estado === "pendiente")
       ? "pendiente"
       : itemsDetalle.every(i => i.estado === "entregado") ? "entregado" : "cancelado";
@@ -357,8 +361,9 @@ export default function ApartadoDetallePage() {
 
     setLoadingAbono(true);
 
-    // Registrar el abono como una sola entrada contra el primer apartado del grupo
+    // Registrar el abono a nivel del pedido
     const { error } = await supabase.from("abonos").insert({
+      grupo_id: grupoId,
       apartado_id: grupoId,
       monto,
       metodo_pago: metodoPagoAbono,

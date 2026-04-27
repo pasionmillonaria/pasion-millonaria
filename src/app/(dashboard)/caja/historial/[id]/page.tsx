@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Spinner from "@/components/ui/Spinner";
 import Button from "@/components/ui/Button";
-import type { TipoRegistroCaja, VResumenCaja } from "@/lib/types";
+import type { MetodoPago, TipoRegistroCaja, VResumenCaja } from "@/lib/types";
 
 interface RegistroLocal {
   id: string;
@@ -18,7 +18,7 @@ interface RegistroLocal {
   tallaNombre: string | null;
   cantidad: number;
   valor: number;
-  metodoPago: string | null;
+  metodoPago: MetodoPago | null;
   montoEfectivo: number;
   montoTransferencia: number;
 }
@@ -32,6 +32,10 @@ const TIPO_ROW: Record<TipoRegistroCaja, string> = {
 
 function genId() {
   return `l-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function esPagoElectronico(metodo: MetodoPago | null) {
+  return metodo !== null && metodo !== "efectivo" && metodo !== "mixto";
 }
 
 function parseRegistros(data: any[]): RegistroLocal[] {
@@ -104,6 +108,8 @@ export default function HistorialDetallePage() {
   const totalVentas = (caja.total_efectivo ?? 0) + (caja.total_transferencias ?? 0);
   const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
   const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
+  const ingresosElectronicos = ingresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
+  const totalElectronico = ventasTransf + ingresosElectronicos;
   const totalGastos = caja.total_gastos ?? 0;
   const totalCajaFuerte = cajaFuerteList.filter(r => r.valor > 0).reduce((s, r) => s + r.valor, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
@@ -148,7 +154,7 @@ export default function HistorialDetallePage() {
         </div>
         <div className="bg-blue-50 rounded-2xl p-4">
           <p className="text-xs text-gray-500 mb-1">Transferencias</p>
-          <p className="text-xl font-black text-blue-600">{formatCurrency(ventasTransf)}</p>
+          <p className="text-xl font-black text-blue-600">{formatCurrency(totalElectronico)}</p>
         </div>
         <div className="bg-sky-50 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -197,10 +203,14 @@ export default function HistorialDetallePage() {
             const pagoColor =
               r.metodoPago === "efectivo"      ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
               r.metodoPago === "transferencia" ? "bg-blue-50 text-blue-700 border-blue-200" :
+              r.metodoPago === "datafono"      ? "bg-violet-50 text-violet-700 border-violet-200" :
+              r.metodoPago === "nequi"         ? "bg-pink-50 text-pink-700 border-pink-200" :
                                                  "bg-purple-50 text-purple-700 border-purple-200";
             const pagoLabel =
               r.metodoPago === "efectivo"      ? "Efe" :
-              r.metodoPago === "transferencia" ? "Transf" : "Mixto";
+              r.metodoPago === "transferencia" ? "Transf" :
+              r.metodoPago === "datafono"      ? "Dat" :
+              r.metodoPago === "nequi"         ? "Nequi" : "Mixto";
             return (
               <div key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                 <div className="grid grid-cols-[2.5rem_1fr_3rem_5rem_4.5rem] gap-0 px-3 py-2 items-center">

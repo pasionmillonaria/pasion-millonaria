@@ -36,15 +36,15 @@ function agrupar(apartados: VApartadosPendientes[]): GrupoApartado[] {
         estado: a.estado as "pendiente" | "entregado" | "cancelado",
         items: [],
         totalPrecio: 0,
-        totalAbonado: 0,
-        totalSaldo: 0,
+        totalAbonado: a.total_abonado,
+        totalSaldo: a.saldo,
       });
     }
     const g = mapa.get(gid)!;
     g.items.push(a);
-    g.totalPrecio += a.precio;
-    g.totalAbonado += a.total_abonado;
-    g.totalSaldo += a.saldo;
+    if (a.estado !== "cancelado") {
+      g.totalPrecio += a.precio;
+    }
     // El estado del grupo: si alguno está pendiente → pendiente
     if (a.estado === "pendiente") g.estado = "pendiente";
     else if (a.estado === "entregado" && g.estado !== "pendiente") g.estado = "entregado";
