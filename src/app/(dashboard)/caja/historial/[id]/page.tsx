@@ -371,11 +371,14 @@ function ReporteImpresion({ caja, registros, ventasEfe, ventasTransf, totalCajaF
   const ventas  = registros.filter(r => r.tipo === "venta");
   const gastos  = registros.filter(r => r.tipo === "gasto");
   const ingresos = registros.filter(r => r.tipo === "ingreso");
+  const abonos = ingresos.filter(r => r.descripcion?.toLowerCase().includes("abono"));
+  const otrosIngresos = ingresos.filter(r => !r.descripcion?.toLowerCase().includes("abono"));
   const guardadoList = registros.filter(r => r.tipo === "caja_fuerte" && r.valor > 0);
   const retiroList   = registros.filter(r => r.tipo === "caja_fuerte" && r.valor < 0);
-  const totalVentas  = (caja.total_efectivo ?? 0) + (caja.total_transferencias ?? 0);
+  const totalAbonos  = abonos.reduce((s, r) => s + r.valor, 0);
+  const totalVentas  = ventas.reduce((s, r) => s + r.valor, 0) + totalAbonos;
   const gastosEfe    = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const ingresosEfe  = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
+  const ingresosEfe  = otrosIngresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   const diferencia   = caja.diferencia_caja ?? 0;
 
   const kpiStyle = (bg: string): React.CSSProperties => ({
