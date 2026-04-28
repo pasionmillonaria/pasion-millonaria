@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ShoppingBag, PackagePlus, Bookmark, ArrowLeftRight,
-  AlertTriangle, RefreshCw, ChevronRight, Eye, TrendingUp, LogOut, UserMinus,
+  AlertTriangle, RefreshCw, ChevronRight, Eye, TrendingUp, LogOut, UserMinus, Lock
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -16,16 +16,16 @@ import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
 
 const accionesAdmin = [
-  { href: "/venta",           label: "Venta",     icon: ShoppingBag,    color: "bg-brand-blue",  desc: "Registrar salida" },
-  { href: "/entrada",         label: "Entrada",   icon: PackagePlus,    color: "bg-green-600",   desc: "Nueva mercancía" },
-  { href: "/apartados/nuevo", label: "Apartado",  icon: Bookmark,       color: "bg-brand-gold",  desc: "Cliente aparta" },
-  { href: "/traslado",        label: "Traslado",  icon: ArrowLeftRight, color: "bg-purple-600",  desc: "Tienda ↔ Bodega" },
+  { href: "/venta", label: "Venta", icon: ShoppingBag, color: "bg-brand-blue", desc: "Registrar salida" },
+  { href: "/entrada", label: "Entrada", icon: PackagePlus, color: "bg-green-600", desc: "Nueva mercancía" },
+  { href: "/apartados/nuevo", label: "Apartado", icon: Bookmark, color: "bg-brand-gold", desc: "Cliente aparta" },
+  { href: "/traslado", label: "Traslado", icon: ArrowLeftRight, color: "bg-purple-600", desc: "Tienda ↔ Bodega" },
 ];
 
 const accionesExtra = [
-  { href: "/devolucion", icon: RefreshCw,      color: "bg-orange-100", iconColor: "text-orange-600", label: "Devolución",  desc: "Cliente devuelve" },
-  { href: "/cambio",     icon: ArrowLeftRight, color: "bg-blue-100",   iconColor: "text-blue-600",   label: "Cambio",      desc: "Cambio de producto" },
-  { href: "/retiro",     icon: UserMinus,      color: "bg-gray-100",   iconColor: "text-gray-600",   label: "Retiro",      desc: "Uso personal dueño" },
+  { href: "/devolucion", icon: RefreshCw, color: "bg-orange-100", iconColor: "text-orange-600", label: "Devolución", desc: "Cliente devuelve" },
+  { href: "/cambio", icon: ArrowLeftRight, color: "bg-blue-100", iconColor: "text-blue-600", label: "Cambio", desc: "Cambio de producto" },
+  { href: "/retiro", icon: UserMinus, color: "bg-gray-100", iconColor: "text-gray-600", label: "Retiro", desc: "Uso personal dueño" },
 ];
 
 export default function InicioPage() {
@@ -42,6 +42,7 @@ export default function InicioPage() {
   const [stockBajo, setStockBajo] = useState<VStockBajo[]>([]);
   const [resumenHoy, setResumenHoy] = useState<VResumenCajaHoy[]>([]);
   const [pedidosHoy, setPedidosHoy] = useState<PedidoVentaResumen[]>([]);
+  const [totalCajaFuerte, setTotalCajaFuerte] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   async function fetchData() {
@@ -51,7 +52,7 @@ export default function InicioPage() {
     const finDia = new Date(inicioDia);
     finDia.setDate(finDia.getDate() + 1);
 
-    const [{ data: ap }, { data: sb }, { data: ventasData }, resumenResponse] = await Promise.all([
+    const [{ data: ap }, { data: sb }, { data: ventasData }, resumenResponse, { data: cajaFuerteData }] = await Promise.all([
       supabase.from("v_apartados_pendientes").select("*").eq("estado", "pendiente").order("en_tienda", { ascending: true }).order("fecha", { ascending: true }).limit(20),
       supabase.from("v_stock_bajo").select("*").limit(20),
       supabase
@@ -65,18 +66,20 @@ export default function InicioPage() {
       isAdmin
         ? supabase.from("v_resumen_caja_hoy").select("*")
         : Promise.resolve({ data: [] as VResumenCajaHoy[] | null }),
+      supabase.from("registros_caja").select("valor").eq("tipo", "caja_fuerte"),
     ]);
     setApartados(ap ?? []);
     setStockBajo(sb ?? []);
     setPedidosHoy(buildPedidosVenta((ventasData ?? []) as any[]));
     setResumenHoy(resumenResponse.data ?? []);
+    setTotalCajaFuerte(cajaFuerteData?.reduce((sum, r) => sum + Number(r.valor), 0) || 0);
     setLoading(false);
   }
 
   useEffect(() => { fetchData(); }, [isAdmin]);
 
   const totalVentasHoy = resumenHoy.reduce((s, r) => s + r.total, 0);
-  const cantVentasHoy  = resumenHoy.reduce((s, r) => s + r.cantidad, 0);
+  const cantVentasHoy = resumenHoy.reduce((s, r) => s + r.cantidad, 0);
   const pedidosPorCanal = CANALES_PEDIDO.map(canal => ({
     canal,
     pedidos: pedidosHoy.filter(pedido => pedido.canal === canal),
@@ -93,7 +96,7 @@ export default function InicioPage() {
     <div className="px-4 md:px-8 pt-6 max-w-7xl mx-auto">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow"
             style={{ backgroundColor: profile?.color ?? "#003BC4" }}>
@@ -112,9 +115,24 @@ export default function InicioPage() {
             <span className="hidden sm:inline">Cambiar</span>
           </button>
         </div>
-        <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
-          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-        </button>
+
+        <div className="flex items-center gap-3">
+          <div className="bg-green-50 border border-green-100 rounded-xl px-3 py-1.5 flex items-center gap-2 shadow-sm">
+            <div className="bg-green-100 p-1.5 rounded-lg text-green-600">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] text-green-600/80 font-bold uppercase leading-none mb-0.5">Guardado</p>
+              <p className="text-sm font-black text-green-700 leading-none">
+                {loading ? "..." : formatCurrency(totalCajaFuerte)}
+              </p>
+            </div>
+          </div>
+
+          <button onClick={fetchData} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
+            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* Banner ventas del día (admin) */}
@@ -224,8 +242,8 @@ export default function InicioPage() {
                             canal === "venta_tienda"
                               ? "info"
                               : canal === "domicilio"
-                              ? "warning"
-                              : "success"
+                                ? "warning"
+                                : "success"
                           }
                         >
                           {LABELS_CANAL[canal]}
