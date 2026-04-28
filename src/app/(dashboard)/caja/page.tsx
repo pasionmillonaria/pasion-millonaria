@@ -558,6 +558,8 @@ interface ReporteParams {
 function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: ReporteParams) {
   const ventas = registros.filter(r => r.tipo === "venta");
   const gastos = registros.filter(r => r.tipo === "gasto");
+  const ingresos = registros.filter(r => r.tipo === "ingreso");
+  const cajaFuerteList = registros.filter(r => r.tipo === "caja_fuerte");
   const abonos = ingresos.filter(r => r.descripcion?.toLowerCase().includes("abono"));
   const otrosIngresos = ingresos.filter(r => !r.descripcion?.toLowerCase().includes("abono"));
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
