@@ -895,7 +895,7 @@ export default function CajaPage() {
     setLoading(true);
     const [{ data: cajaHoy }, { data: hist }] = await Promise.all([
       supabase.from("caja_diaria").select("*").eq("fecha", hoy).maybeSingle(),
-      supabase.from("v_resumen_caja" as any).select("*").eq("estado", "cerrada")
+      supabase.from("v_resumen_caja" as any).select("*").neq("fecha", hoy)
         .order("fecha", { ascending: false }).limit(30),
     ]);
 
@@ -915,7 +915,7 @@ export default function CajaPage() {
     } else {
       const { data: ultima } = await supabase
         .from("v_resumen_caja" as any).select("saldo_final")
-        .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
+        .order("fecha", { ascending: false }).limit(1).maybeSingle();
       if (ultima) setSaldoInicial((ultima as any).saldo_final ?? 0);
       setCajaDiariaId(null);
       setCajaEstado("abierta");
