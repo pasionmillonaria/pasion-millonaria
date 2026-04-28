@@ -902,8 +902,18 @@ export default function CajaPage() {
     setHistorial((hist as unknown as VResumenCaja[]) ?? []);
 
     if (cajaHoy) {
+      let saldoCorrecto = cajaHoy.saldo_inicial;
+      // Auto-reparación: si la caja está abierta y el saldo inicial no coincide con el final de ayer, lo actualizamos.
+      if (cajaHoy.estado === "abierta" && hist && hist.length > 0) {
+        const saldoReal = (hist[0] as any).saldo_final ?? 0;
+        if (cajaHoy.saldo_inicial !== saldoReal) {
+          await supabase.from("caja_diaria").update({ saldo_inicial: saldoReal }).eq("id", cajaHoy.id);
+          saldoCorrecto = saldoReal;
+        }
+      }
+
       setCajaDiariaId(cajaHoy.id);
-      setSaldoInicial(cajaHoy.saldo_inicial);
+      setSaldoInicial(saldoCorrecto);
       setCajaEstado(cajaHoy.estado);
       setEfectivoContadoCierre(cajaHoy.efectivo_contado ?? null);
       const { data: regs } = await supabase
