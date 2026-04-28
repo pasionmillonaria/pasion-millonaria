@@ -285,6 +285,7 @@ export default function NuevoApartadoPage() {
 
     toast.success(`¡${idsCreados.length > 1 ? `${idsCreados.length} apartados creados` : "Apartado creado"}!`);
     setApartadosCreados(idsCreados);
+    setItems([]);
     setConfirmado(true);
     setLoading(false);
   }
