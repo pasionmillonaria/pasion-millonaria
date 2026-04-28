@@ -105,10 +105,13 @@ export default function HistorialDetallePage() {
   const gastos = registros.filter(r => r.tipo === "gasto");
   const ingresos = registros.filter(r => r.tipo === "ingreso");
   const cajaFuerteList = registros.filter(r => r.tipo === "caja_fuerte");
-  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + ingresos.reduce((s, r) => s + r.valor, 0);
-  const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
-  const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
-  const ingresosElectronicos = ingresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
+  const abonos = ingresos.filter(r => r.descripcion?.toLowerCase().includes("abono"));
+  const otrosIngresos = ingresos.filter(r => !r.descripcion?.toLowerCase().includes("abono"));
+  const totalAbonos = abonos.reduce((s, r) => s + r.valor, 0);
+  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + totalAbonos;
+  const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0) + abonos.reduce((s, r) => s + r.montoEfectivo, 0);
+  const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0) + abonos.reduce((s, r) => s + r.montoTransferencia, 0);
+  const ingresosElectronicos = otrosIngresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
   const totalElectronico = ventasTransf + ingresosElectronicos;
   const totalGastos = caja.total_gastos ?? 0;
   const totalCajaFuerte = cajaFuerteList.filter(r => r.valor > 0).reduce((s, r) => s + r.valor, 0);

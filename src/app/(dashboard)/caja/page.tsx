@@ -558,22 +558,23 @@ interface ReporteParams {
 function ReporteCierre({ registros, saldoInicial, fecha, efectivoContado }: ReporteParams) {
   const ventas = registros.filter(r => r.tipo === "venta");
   const gastos = registros.filter(r => r.tipo === "gasto");
-  const ingresos = registros.filter(r => r.tipo === "ingreso");
-  const cajaFuerteList = registros.filter(r => r.tipo === "caja_fuerte");
+  const abonos = ingresos.filter(r => r.descripcion?.toLowerCase().includes("abono"));
+  const otrosIngresos = ingresos.filter(r => !r.descripcion?.toLowerCase().includes("abono"));
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
-  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + totalIngresos;
+  const totalAbonos = abonos.reduce((s, r) => s + r.valor, 0);
+  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + totalAbonos;
   const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const guardadoList = cajaFuerteList.filter(r => r.valor > 0);
   const retiroList   = cajaFuerteList.filter(r => r.valor < 0);
   const totalGuardado  = guardadoList.reduce((s, r) => s + r.valor, 0);
   const totalRetiros   = retiroList.reduce((s, r) => s + Math.abs(r.valor), 0);
   const saldoGuardado  = totalGuardado - totalRetiros;
-  const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
-  const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
-  const ingresosElectronicos = ingresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
+  const ventasEfe = ventas.reduce((s, r) => s + r.montoEfectivo, 0) + abonos.reduce((s, r) => s + r.montoEfectivo, 0);
+  const ventasTransf = ventas.reduce((s, r) => s + r.montoTransferencia, 0) + abonos.reduce((s, r) => s + r.montoTransferencia, 0);
+  const ingresosElectronicos = otrosIngresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
   const totalElectronico = ventasTransf + ingresosElectronicos;
   const gastosEfe = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const ingresosEfe = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
+  const ingresosEfe = otrosIngresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   const debeHaber = saldoInicial + ventasEfe + ingresosEfe - gastosEfe - totalGuardado;
   const diferencia = efectivoContado - debeHaber;
 
@@ -845,8 +846,11 @@ export default function CajaPage() {
   const ingresos = registros.filter(r => r.tipo === "ingreso");
   const cajaFuerteItems = registros.filter(r => r.tipo === "caja_fuerte" && r.valor > 0);
   const retiroItems     = registros.filter(r => r.tipo === "caja_fuerte" && r.valor < 0);
+  const abonos = ingresos.filter(r => r.descripcion?.toLowerCase().includes("abono"));
+  const otrosIngresos = ingresos.filter(r => !r.descripcion?.toLowerCase().includes("abono"));
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
-  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + totalIngresos;
+  const totalAbonos = abonos.reduce((s, r) => s + r.valor, 0);
+  const totalVentas = ventas.reduce((s, r) => s + r.valor, 0) + totalAbonos;
   const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const comisiones = ventas
     .filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000)
@@ -857,12 +861,12 @@ export default function CajaPage() {
   const totalRetiros  = retiroItems.reduce((s, r) => s + Math.abs(r.valor), 0);
   // Saldo neto que queda en el guardado
   const saldoGuardadoNeto = totalGuardado - totalRetiros;
-  const ventasEfectivo = ventas.reduce((s, r) => s + r.montoEfectivo, 0);
-  const ventasTransferencia = ventas.reduce((s, r) => s + r.montoTransferencia, 0);
-  const ingresosElectronicos = ingresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
+  const ventasEfectivo = ventas.reduce((s, r) => s + r.montoEfectivo, 0) + abonos.reduce((s, r) => s + r.montoEfectivo, 0);
+  const ventasTransferencia = ventas.reduce((s, r) => s + r.montoTransferencia, 0) + abonos.reduce((s, r) => s + r.montoTransferencia, 0);
+  const ingresosElectronicos = otrosIngresos.filter(r => esPagoElectronico(r.metodoPago)).reduce((s, r) => s + r.valor, 0);
   const totalTransferencias = ventasTransferencia + ingresosElectronicos;
   const gastosEfectivo = gastos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
-  const ingresosEfectivo = ingresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
+  const ingresosEfectivo = otrosIngresos.filter(r => r.metodoPago === "efectivo").reduce((s, r) => s + r.valor, 0);
   // Solo se resta lo que salió de la caja al guardado, no los retiros del guardado
   const debeHaberEnCaja = saldoInicial + ventasEfectivo + ingresosEfectivo - gastosEfectivo - totalGuardado;
   const efectivoContadoNum = parseFloat(efectivoContado) || 0;
