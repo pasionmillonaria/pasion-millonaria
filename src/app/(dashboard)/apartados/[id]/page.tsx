@@ -8,7 +8,7 @@ import { formatCurrency, formatDate, formatDateTime, getLocalDateString, getLoca
 import InputDinero from "@/components/ui/InputDinero";
 import SelectorTalla from "@/components/SelectorTalla";
 import ListaProductos from "@/components/ListaProductos";
-import type { Abono, MetodoPago, SistemaTalla } from "@/lib/types";
+import type { Abono, MetodoPago, SistemaTalla, CanalMovimiento } from "@/lib/types";
 import { useProfile } from "@/lib/context/ProfileContext";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -28,6 +28,7 @@ interface ItemGrupo {
   producto_id: number;
   talla_id: number;
   observacion: string | null;
+  canal: CanalMovimiento;
 }
 
 interface TallaStock {
@@ -51,6 +52,7 @@ interface GrupoDetalle {
   totalAbonado: number;
   totalSaldo: number;
   estadoGrupo: string;
+  canal: CanalMovimiento;
 }
 
 const METODOS: { value: MetodoPago; label: string }[] = [
@@ -58,6 +60,12 @@ const METODOS: { value: MetodoPago; label: string }[] = [
   { value: "nequi", label: "Nequi" },
   { value: "transferencia", label: "Transferencia" },
   { value: "datafono", label: "Datáfono" },
+];
+
+const CANALES: { value: CanalMovimiento; label: string }[] = [
+  { value: "venta_tienda", label: "Tienda" },
+  { value: "domicilio", label: "Domicilio" },
+  { value: "envio_nacional", label: "Envío Nacional" },
 ];
 
 export default function ApartadoDetallePage() {
@@ -76,6 +84,9 @@ export default function ApartadoDetallePage() {
   const [montoAbono, setMontoAbono] = useState("");
   const [metodoPagoAbono, setMetodoPagoAbono] = useState<MetodoPago>("efectivo");
   const [loadingAbono, setLoadingAbono] = useState(false);
+
+  const [editCanal, setEditCanal] = useState<CanalMovimiento>("venta_tienda");
+  const [loadingCanal, setLoadingCanal] = useState(false);
 
   // Modal agregar prenda
   const [modalAgregar, setModalAgregar] = useState(false);
@@ -145,7 +156,9 @@ export default function ApartadoDetallePage() {
       clienteTelefono: items[0].cliente_telefono, fecha: items[0].fecha,
       items: itemsDetalle, abonos: abonos ?? [],
       totalPrecio, totalAbonado, totalSaldo, estadoGrupo,
+      canal: items[0].canal as CanalMovimiento ?? "venta_tienda",
     });
+    setEditCanal(items[0].canal as CanalMovimiento ?? "venta_tienda");
     setLoading(false);
   }
 
@@ -398,7 +411,7 @@ export default function ApartadoDetallePage() {
     }
     // Si la caja está cerrada, no se agrega a registros_caja
 
-    if (cajaDiariaId) {
+    if (cajaDiariaId && grupo.canal === "venta_tienda") {
       const hoy = getLocalDateString();
       const hora = getLocalTimeString();
       const esEfectivo = metodoPagoAbono === "efectivo";
@@ -480,7 +493,10 @@ export default function ApartadoDetallePage() {
         <Badge variant={esPendiente ? "warning" : grupo.estadoGrupo === "entregado" ? "success" : "danger"}>
           {grupo.estadoGrupo}
         </Badge>
-      </div>
+         <Badge variant={esPendiente ? "warning" : grupo.estadoGrupo === "entregado" ? "success" : "danger"}>
+           {grupo.estadoGrupo}
+         </Badge>
+       </div>
 
       {/* Info cliente */}
       <div className="card mb-4">
@@ -495,6 +511,48 @@ export default function ApartadoDetallePage() {
           </div>
           <p className="text-sm text-gray-400">{formatDate(grupo.fecha)}</p>
         </div>
+      </div>
+
+      {/* Canal de entrega */}
+      <div className="card mb-4 bg-blue-50/30 border-blue-100">
+        <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2 text-sm">
+          <Store className="w-4 h-4 text-brand-blue" /> Canal de entrega
+        </h3>
+        <div className="grid grid-cols-3 gap-2">
+          {CANALES.map(c => {
+            const activo = editCanal === c.value;
+            return (
+              <button
+                key={c.value}
+                disabled={loadingCanal}
+                onClick={async () => {
+                  if (activo) return;
+                  setEditCanal(c.value);
+                  setLoadingCanal(true);
+                  const { error } = await supabase.from("apartados").update({ canal: c.value }).eq("grupo_id", grupoId);
+                  if (error) toast.error("Error: " + error.message);
+                  else {
+                    toast.success("Canal actualizado");
+                    await cargarDatos();
+                  }
+                  setLoadingCanal(false);
+                }}
+                className={`py-2 px-1 rounded-xl text-[10px] font-bold uppercase transition-all ${
+                  activo 
+                    ? "bg-brand-blue text-white shadow-md shadow-blue-200 scale-105" 
+                    : "bg-white text-gray-500 border border-gray-100 hover:bg-gray-50"
+                } ${loadingCanal ? "opacity-50" : ""}`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+        {editCanal !== "venta_tienda" && (
+          <p className="text-[10px] text-brand-blue mt-2 font-medium flex items-center gap-1">
+            <span>ℹ️</span> Los abonos de este apartado NO se registrarán en el efectivo de la caja.
+          </p>
+        )}
       </div>
 
       {/* Prendas */}

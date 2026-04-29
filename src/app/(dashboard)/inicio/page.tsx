@@ -57,7 +57,7 @@ export default function InicioPage() {
       supabase.from("v_stock_bajo").select("*").limit(20),
       supabase
         .from("movimientos")
-        .select("id, fecha, canal, cantidad, precio_venta, descuento, metodo_pago, movimiento_ref, nota, productos(referencia), tallas(nombre)")
+        .select("id, fecha, canal, cantidad, precio_venta, descuento, metodo_pago, movimiento_ref, nota, productos(referencia, codigo), tallas(nombre)")
         .eq("tipo", "salida")
         .in("canal", CANALES_PEDIDO)
         .gte("fecha", inicioDia.toISOString())
@@ -321,13 +321,24 @@ export default function InicioPage() {
                     className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 transition-all">
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm truncate">{a.cliente_nombre}</p>
-                      <p className="text-xs text-gray-500 truncate">{a.referencia} · T:{a.talla}</p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {(a.referencia.toLowerCase().includes("libre") && a.observacion)
+                          ? a.observacion
+                          : a.referencia} · T:{a.talla}
+                      </p>
                     </div>
-                    {!a.en_tienda && (
-                      <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-lg shrink-0">
-                        Por llegar
-                      </span>
-                    )}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {a.canal !== "venta_tienda" && (
+                        <span className="text-[9px] font-bold uppercase text-brand-blue bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">
+                          {a.canal === "domicilio" ? "Domicilio" : "Envío"}
+                        </span>
+                      )}
+                      {!a.en_tienda && (
+                        <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-lg">
+                          Por llegar
+                        </span>
+                      )}
+                    </div>
                     {isAdmin && (
                       <p className="text-sm font-bold text-red-600 shrink-0">{formatCurrency(a.saldo)}</p>
                     )}

@@ -74,7 +74,7 @@ export default function PedidoVentaDetallePage() {
     let query = supabase
       .from("movimientos")
       .select(
-        "id, fecha, canal, cantidad, precio_venta, descuento, metodo_pago, movimiento_ref, nota, productos(referencia), tallas(nombre)",
+        "id, fecha, canal, cantidad, precio_venta, descuento, metodo_pago, movimiento_ref, nota, productos(referencia, codigo), tallas(nombre)",
       )
       .eq("tipo", "salida")
       .in("canal", CANALES_PEDIDO);

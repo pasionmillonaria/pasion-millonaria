@@ -10,7 +10,7 @@ import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
-import type { Cliente, MetodoPago } from "@/lib/types";
+import type { Cliente, MetodoPago, CanalMovimiento } from "@/lib/types";
 
 import type { SistemaTalla } from "@/lib/types";
 
@@ -38,6 +38,12 @@ const METODOS: { value: MetodoPago; label: string }[] = [
   { value: "datafono", label: "Datáfono" },
 ];
 
+const CANALES: { value: CanalMovimiento; label: string }[] = [
+  { value: "venta_tienda", label: "Tienda" },
+  { value: "domicilio", label: "Domicilio" },
+  { value: "envio_nacional", label: "Envío Nacional" },
+];
+
 let keyCounter = 0;
 
 export default function NuevoApartadoPage() {
@@ -63,6 +69,7 @@ export default function NuevoApartadoPage() {
   // Pago
   const [abono, setAbono] = useState("");
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
+  const [canal, setCanal] = useState<CanalMovimiento>("venta_tienda");
   const [observacion, setObservacion] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -194,6 +201,7 @@ export default function NuevoApartadoPage() {
           precio: itemPrecio,
           en_tienda: item.enTienda,
           observacion: esElPrimero && observacion ? observacion : null,
+          canal: canal,
         }).select("id").single();
 
         if (apResult.error) { toast.error(`Error creando apartado: ${apResult.error.message}`); setLoading(false); return; }
@@ -267,7 +275,7 @@ export default function NuevoApartadoPage() {
         }
       }
 
-      if (cajaDiariaId) {
+      if (cajaDiariaId && canal === "venta_tienda") {
         const hoy = getLocalDateString();
         const hora = getLocalTimeString();
         const esEfectivo = metodoPago === "efectivo";
@@ -553,6 +561,26 @@ export default function NuevoApartadoPage() {
               <div>
                 <label className="label">Observación (opcional)</label>
                 <input type="text" value={observacion} onChange={e => setObservacion(e.target.value)} className="input" placeholder="Notas..." />
+              </div>
+
+              <div>
+                <label className="label">Canal de entrega</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {CANALES.map(c => (
+                    <button
+                      key={c.value}
+                      onClick={() => setCanal(c.value)}
+                      className={`py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider ${canal === c.value ? "bg-brand-blue text-white shadow-md shadow-blue-100" : "bg-gray-100 text-gray-500"}`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                {canal !== "venta_tienda" && (
+                  <p className="text-[10px] text-orange-600 mt-1.5 font-medium flex items-center gap-1">
+                    <span>⚠️</span> Los abonos de este apartado NO se sumarán a la caja de la tienda.
+                  </p>
+                )}
               </div>
 
               <Button className="w-full" size="lg" onClick={confirmar} loading={loading}>

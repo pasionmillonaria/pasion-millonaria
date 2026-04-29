@@ -12,7 +12,7 @@ export interface MovimientoPedidoRow {
   metodo_pago: MetodoPago | null;
   movimiento_ref: string | null;
   nota?: string | null;
-  productos?: { referencia: string } | null;
+  productos?: { referencia: string; codigo?: string } | null;
   tallas?: { nombre: string } | null;
 }
 
@@ -74,7 +74,7 @@ export function buildPedidosVenta(
     const pedido = grouped.get(key)!;
     pedido.items.push({
       movimientoId: row.id,
-      referencia: (row.productos?.referencia === "Artículo Libre" && row.nota)
+      referencia: (row.productos?.codigo === "LIBRE" || row.productos?.referencia.toLowerCase().includes("libre")) && row.nota
         ? row.nota
         : (row.productos?.referencia ?? "Sin referencia"),
       talla: row.tallas?.nombre ?? "-",

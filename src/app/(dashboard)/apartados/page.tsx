@@ -21,6 +21,7 @@ interface GrupoApartado {
   totalPrecio: number;
   totalAbonado: number;
   totalSaldo: number;
+  canal: string;
 }
 
 function agrupar(apartados: VApartadosPendientes[]): GrupoApartado[] {
@@ -38,6 +39,7 @@ function agrupar(apartados: VApartadosPendientes[]): GrupoApartado[] {
         totalPrecio: 0,
         totalAbonado: 0,
         totalSaldo: 0,
+        canal: a.canal ?? "venta_tienda",
       });
     }
     const g = mapa.get(gid)!;
@@ -172,11 +174,18 @@ export default function ApartadosPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 truncate">{g.clienteNombre}</p>
-                <p className="text-xs text-gray-500 truncate">
-                  {g.items.length === 1
-                    ? `${g.items[0].referencia} — Talla ${g.items[0].talla}`
-                    : g.items.map(i => i.referencia).join(", ")}
-                </p>
+                 <div className="flex items-center gap-2 mt-0.5">
+                   <p className="text-xs text-gray-500 truncate">
+                     {g.items.length === 1
+                       ? `${g.items[0].referencia} — Talla ${g.items[0].talla}`
+                       : g.items.map(i => i.referencia).join(", ")}
+                   </p>
+                   {g.canal !== "venta_tienda" && (
+                     <Badge variant="info" className="text-[9px] px-1.5 py-0.5 leading-none h-fit">
+                       {g.canal === "domicilio" ? "Domicilio" : "Envío"}
+                     </Badge>
+                   )}
+                 </div>
                 <p className="text-xs text-gray-400">{formatDate(g.fecha)}</p>
               </div>
               <div className="text-right shrink-0">

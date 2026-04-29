@@ -496,6 +496,7 @@ export interface Database {
           estado: EstadoApartado;
           en_tienda: boolean;
           observacion: string | null;
+          canal: string;
         };
         Relationships: [];
       };
