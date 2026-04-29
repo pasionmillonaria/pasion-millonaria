@@ -270,6 +270,7 @@ export interface Database {
           estado: EstadoApartado;
           en_tienda: boolean;
           observacion: string | null;
+          canal: CanalMovimiento;
           usuario_id: string | null;
         };
         Insert: {
@@ -281,6 +282,7 @@ export interface Database {
           estado?: EstadoApartado;
           en_tienda?: boolean;
           observacion?: string | null;
+          canal?: CanalMovimiento;
           usuario_id?: string | null;
         };
         Update: {
@@ -292,6 +294,7 @@ export interface Database {
           estado?: EstadoApartado;
           en_tienda?: boolean;
           observacion?: string | null;
+          canal?: CanalMovimiento;
           usuario_id?: string | null;
         };
         Relationships: [];
