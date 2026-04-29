@@ -57,7 +57,7 @@ export default function InicioPage() {
       supabase.from("v_stock_bajo").select("*").limit(20),
       supabase
         .from("movimientos")
-        .select("id, fecha, canal, cantidad, precio_venta, descuento, metodo_pago, movimiento_ref, productos(referencia), tallas(nombre)")
+        .select("id, fecha, canal, cantidad, precio_venta, descuento, metodo_pago, movimiento_ref, nota, productos(referencia), tallas(nombre)")
         .eq("tipo", "salida")
         .in("canal", CANALES_PEDIDO)
         .gte("fecha", inicioDia.toISOString())
@@ -267,10 +267,12 @@ export default function InicioPage() {
                             <div className="flex items-start justify-between gap-3 mb-2">
                               <div className="min-w-0">
                                 <p className="font-semibold text-sm text-gray-900 truncate">
-                                  {pedido.displayRef}
+                                  {pedido.items.length === 1 
+                                    ? pedido.items[0]?.referencia 
+                                    : `${pedido.items[0]?.referencia} y ${pedido.items.length - 1} más`}
                                 </p>
-                                <p className="text-xs text-gray-500">
-                                  {formatHora(pedido.fecha)} · {pedido.totalUnidades} ud{pedido.totalUnidades !== 1 ? "s" : ""}
+                                <p className="text-xs text-gray-500 truncate">
+                                  {pedido.displayRef} · {formatHora(pedido.fecha)} · {pedido.totalUnidades} ud{pedido.totalUnidades !== 1 ? "s" : ""}
                                 </p>
                               </div>
                               <span className="text-xs font-medium text-brand-blue shrink-0">

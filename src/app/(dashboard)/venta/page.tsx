@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle,
@@ -39,7 +39,9 @@ interface ProductoSeleccionado {
 
 interface ItemVenta {
   key: number;
+  modo: "inventario" | "libre";
   producto: ProductoSeleccionado;
+  descripcionLibre?: string;
   tallas: TallaStock[];
   tallaId: number;
   ubicacionId: number;
@@ -76,14 +78,25 @@ export default function VentaPage() {
   const [items, setItems] = useState<ItemVenta[]>([]);
   const [agregandoItem, setAgregandoItem] = useState(true);
 
-  const [itemTempProducto, setItemTempProducto] =
-    useState<ProductoSeleccionado | null>(null);
+  // Inventario / Libre
+  const [itemTempModo, setItemTempModo] = useState<"inventario" | "libre">("inventario");
+  
+  // Temp Inventario
+  const [itemTempProducto, setItemTempProducto] = useState<ProductoSeleccionado | null>(null);
   const [itemTempTallas, setItemTempTallas] = useState<TallaStock[]>([]);
   const [itemTempTallaId, setItemTempTallaId] = useState<number | null>(null);
   const [itemTempUbicacionId, setItemTempUbicacionId] = useState<number>(1);
   const [itemTempCantidad, setItemTempCantidad] = useState(1);
   const [itemTempPrecioVenta, setItemTempPrecioVenta] = useState("");
   const [itemTempDescuento, setItemTempDescuento] = useState("");
+
+  // Temp Libre
+  const [itemTempDescripcionLibre, setItemTempDescripcionLibre] = useState("");
+  const [itemTempSistemaLibre, setItemTempSistemaLibre] = useState<string | null>(null);
+
+  // Global
+  const [todasLasTallas, setTodasLasTallas] = useState<{ id: number; nombre: string; sistema: string }[]>([]);
+  const [productoLibreId, setProductoLibreId] = useState<number | null>(null);
 
   const [canal, setCanal] = useState<CanalMovimiento>("venta_tienda");
   const [metodoPago, setMetodoPago] = useState<MetodoPagoVenta>("efectivo");
@@ -114,6 +127,17 @@ export default function VentaPage() {
     0,
   );
 
+  useEffect(() => {
+    async function loadGlobals() {
+      const { data: tallasData } = await supabase.from("tallas").select("id, nombre, sistema").order("orden");
+      if (tallasData) setTodasLasTallas(tallasData);
+
+      const { data: pData } = await supabase.from("productos").select("id").eq("codigo", "LIBRE").single();
+      if (pData) setProductoLibreId(pData.id);
+    }
+    loadGlobals();
+  });
+
   async function cargarTallasProducto(
     productoId: number,
   ): Promise<TallaStock[]> {
@@ -142,6 +166,9 @@ export default function VentaPage() {
   }
 
   function getTallaNombre(item: ItemVenta) {
+    if (item.modo === "libre") {
+      return todasLasTallas.find((t) => t.id === item.tallaId)?.nombre ?? "-";
+    }
     return (
       item.tallas.find((talla) => talla.talla_id === item.tallaId)?.talla_nombre ??
       "-"
@@ -271,6 +298,7 @@ export default function VentaPage() {
   }
 
   function resetItemTemporal() {
+    setItemTempModo("inventario");
     setItemTempProducto(null);
     setItemTempTallas([]);
     setItemTempTallaId(null);
@@ -278,47 +306,74 @@ export default function VentaPage() {
     setItemTempCantidad(1);
     setItemTempPrecioVenta("");
     setItemTempDescuento("");
+    setItemTempDescripcionLibre("");
+    setItemTempSistemaLibre(null);
   }
 
   function agregarItemAlPedido() {
-    if (!itemTempProducto || !itemTempTallaId) {
-      toast.error("Selecciona producto y talla");
+    if (itemTempModo === "inventario") {
+      if (!itemTempProducto || !itemTempTallaId) {
+        toast.error("Selecciona producto y talla");
+        return;
+      }
+      const stockDisponible = getStockDisponible(
+        items,
+        itemTempTallas,
+        itemTempProducto.id,
+        itemTempTallaId,
+        itemTempUbicacionId,
+      );
+      if (stockDisponible <= 0) {
+        toast.error("No hay stock disponible en esa ubicacion");
+        return;
+      }
+      if (itemTempCantidad > stockDisponible) {
+        toast.error(`Solo hay ${stockDisponible} unidad(es) disponibles`);
+        return;
+      }
+    } else {
+      if (!itemTempDescripcionLibre.trim()) {
+        toast.error("Ingresa una descripción para el artículo");
+        return;
+      }
+      if (!itemTempTallaId) {
+        toast.error("Selecciona una talla para el artículo libre");
+        return;
+      }
+      if (!productoLibreId) {
+        toast.error("El producto comodín LIBRE no está configurado en la base de datos");
+        return;
+      }
+    }
+
+    const precioVenta = parseFloat(itemTempPrecioVenta);
+    if (isNaN(precioVenta) || precioVenta <= 0) {
+      toast.error("El precio de venta debe ser mayor a 0");
       return;
     }
 
-    const stockDisponible = getStockDisponible(
-      items,
-      itemTempTallas,
-      itemTempProducto.id,
-      itemTempTallaId,
-      itemTempUbicacionId,
-    );
-    const precio = parseFloat(itemTempPrecioVenta) || 0;
     const descuento = parseFloat(itemTempDescuento) || 0;
-
-    if (stockDisponible <= 0) {
-      toast.error("No hay stock disponible en esa ubicacion");
-      return;
-    }
-
-    if (itemTempCantidad > stockDisponible) {
-      toast.error(`Solo hay ${stockDisponible} unidad(es) disponibles`);
-      return;
-    }
-
-    if (precio <= 0) {
-      toast.error("Ingresa un precio de venta valido");
-      return;
-    }
-
-    if (descuento < 0 || precio - descuento <= 0) {
-      toast.error("El descuento no puede dejar la venta en cero");
+    if (descuento < 0) {
+      toast.error("El descuento no puede ser negativo");
       return;
     }
 
     const nuevoItem: ItemVenta = {
-      key: ++itemKeyCounter,
-      producto: itemTempProducto,
+      key: itemKeyCounter++,
+      modo: itemTempModo,
+      producto:
+        itemTempModo === "inventario"
+          ? itemTempProducto!
+          : {
+              id: productoLibreId!,
+              referencia: "Artículo Libre",
+              codigo: "LIBRE",
+              precio_base: 0,
+              categoria_nombre: "Otro",
+              linea_nombre: "Accesorio",
+              sistema_talla: "unica",
+            },
+      descripcionLibre: itemTempModo === "libre" ? itemTempDescripcionLibre.trim() : undefined,
       tallas: itemTempTallas,
       tallaId: itemTempTallaId,
       ubicacionId: itemTempUbicacionId,
@@ -420,6 +475,7 @@ export default function VentaPage() {
     const consumido = new Map<string, number>();
 
     for (const item of items) {
+      if (item.modo === "libre") continue;
       const stockFila = stockMap.get(`${item.producto.id}-${item.tallaId}`) ?? {
         stock_tienda: 0,
         stock_bodega: 0,
@@ -491,6 +547,7 @@ export default function VentaPage() {
       metodo_pago: metodoPago === "por_confirmar" ? null : metodoPago,
       movimiento_ref: referenciaPedido,
       usuario_id: null,
+      nota: item.modo === "libre" ? item.descripcionLibre : null,
     }));
 
     const { error } = await supabase.from("movimientos").insert(payload);
@@ -619,11 +676,11 @@ export default function VentaPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-semibold text-sm text-gray-900 truncate">
-                            {item.producto.referencia}
+                            {item.modo === "libre" ? item.descripcionLibre : item.producto.referencia}
                           </p>
                           <p className="text-xs text-gray-500">
-                            Talla {getTallaNombre(item)} ·{" "}
-                            {getUbicacionLabel(item.ubicacionId)}
+                            Talla {getTallaNombre(item)}
+                            {item.modo === "inventario" && ` · ${getUbicacionLabel(item.ubicacionId)}`}
                           </p>
                         </div>
                         <button
@@ -694,107 +751,255 @@ export default function VentaPage() {
 
             {agregandoItem && (
               <div className="border border-dashed border-brand-blue rounded-2xl p-4 space-y-4">
-                <p className="text-sm font-semibold text-brand-blue">
+                <p className="text-sm font-semibold text-brand-blue mb-2">
                   Agregar producto
                 </p>
 
-                {!itemTempProducto ? (
-                  <ListaProductos
-                    onSelect={handleSelectProductoTemp}
-                    placeholder="Buscar producto para el pedido..."
-                  />
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">
-                          {itemTempProducto.referencia}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {itemTempProducto.categoria_nombre}
-                        </p>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <button
+                    onClick={() => setItemTempModo("inventario")}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all ${
+                      itemTempModo === "inventario"
+                        ? "bg-brand-blue text-white shadow-md"
+                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                    }`}
+                  >
+                    Del inventario
+                  </button>
+                  <button
+                    onClick={() => {
+                      setItemTempModo("libre");
+                      setItemTempProducto(null);
+                    }}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all ${
+                      itemTempModo === "libre"
+                        ? "bg-brand-blue text-white shadow-md"
+                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                    }`}
+                  >
+                    Artículo libre
+                  </button>
+                </div>
+
+                {itemTempModo === "inventario" ? (
+                  !itemTempProducto ? (
+                    <ListaProductos
+                      onSelect={handleSelectProductoTemp}
+                      placeholder="Buscar producto para el pedido..."
+                    />
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">
+                            {itemTempProducto.referencia}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {itemTempProducto.categoria_nombre}
+                          </p>
+                        </div>
+                        <button
+                          onClick={resetItemTemporal}
+                          className="text-brand-blue text-sm font-medium"
+                        >
+                          Cambiar
+                        </button>
                       </div>
-                      <button
-                        onClick={resetItemTemporal}
-                        className="text-brand-blue text-sm font-medium"
-                      >
-                        Cambiar
-                      </button>
+
+                      <div>
+                        <label className="label">Ubicacion</label>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <button
+                            onClick={() => setItemTempUbicacionId(1)}
+                            className={`py-2 rounded-xl text-sm font-medium ${
+                              itemTempUbicacionId === 1
+                                ? "bg-brand-blue text-white"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            Tienda
+                          </button>
+                          <button
+                            onClick={() => setItemTempUbicacionId(2)}
+                            className={`py-2 rounded-xl text-sm font-medium ${
+                              itemTempUbicacionId === 2
+                                ? "bg-brand-blue text-white"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            Bodega
+                          </button>
+                        </div>
+
+                        {tallasTempDisponibles.length > 0 ? (
+                          <SelectorTalla
+                            tallas={tallasTempDisponibles}
+                            seleccionada={itemTempTallaId}
+                            onSelect={handleSelectTempTalla}
+                            ubicacionId={itemTempUbicacionId}
+                          />
+                        ) : (
+                          <div className="rounded-xl bg-gray-50 text-sm text-gray-400 text-center py-4">
+                            Sin stock disponible para este producto.
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="label">
+                          Cantidad (max. {stockTempDisponible})
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() =>
+                              setItemTempCantidad(
+                                Math.max(1, itemTempCantidad - 1),
+                              )
+                            }
+                            className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl text-gray-700 flex items-center justify-center"
+                          >
+                            -
+                          </button>
+                          <span className="text-2xl font-bold text-gray-900 w-8 text-center">
+                            {itemTempCantidad}
+                          </span>
+                          <button
+                            onClick={() =>
+                              setItemTempCantidad(
+                                Math.min(stockTempDisponible, itemTempCantidad + 1),
+                              )
+                            }
+                            className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl text-gray-700 flex items-center justify-center"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="label">Precio</label>
+                          <InputDinero
+                            value={itemTempPrecioVenta}
+                            onChange={(raw) => setItemTempPrecioVenta(raw)}
+                            className="input"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="label">Descuento</label>
+                          <InputDinero
+                            value={itemTempDescuento}
+                            onChange={(raw) => setItemTempDescuento(raw)}
+                            className="input"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          variant="secondary"
+                          className="flex-1"
+                          onClick={() => {
+                            resetItemTemporal();
+                            setAgregandoItem(items.length === 0);
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button className="flex-1" onClick={agregarItemAlPedido}>
+                          Agregar al pedido
+                        </Button>
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="label">Descripción del artículo</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Ej: Manilla azul, Gorra personalizada..."
+                        value={itemTempDescripcionLibre}
+                        onChange={(e) => setItemTempDescripcionLibre(e.target.value)}
+                      />
                     </div>
 
                     <div>
-                      <label className="label">Ubicacion</label>
+                      <label className="label">Sistema de talla</label>
                       <div className="grid grid-cols-2 gap-2 mb-3">
-                        <button
-                          onClick={() => setItemTempUbicacionId(1)}
-                          className={`py-2 rounded-xl text-sm font-medium ${
-                            itemTempUbicacionId === 1
-                              ? "bg-brand-blue text-white"
-                              : "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          Tienda
-                        </button>
-                        <button
-                          onClick={() => setItemTempUbicacionId(2)}
-                          className={`py-2 rounded-xl text-sm font-medium ${
-                            itemTempUbicacionId === 2
-                              ? "bg-brand-blue text-white"
-                              : "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          Bodega
-                        </button>
+                        {Object.entries({
+                          ropa_adulto: "Ropa Adulto",
+                          ropa_nino: "Ropa Niño",
+                          calzado: "Calzado",
+                          unica: "Única",
+                        }).map(([key, label]) => (
+                          <button
+                            key={key}
+                            onClick={() => {
+                              setItemTempSistemaLibre(key);
+                              setItemTempTallaId(null);
+                            }}
+                            className={`py-2 rounded-xl text-xs font-medium ${
+                              itemTempSistemaLibre === key
+                                ? "bg-brand-blue text-white shadow-sm"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
 
-                      {tallasTempDisponibles.length > 0 ? (
-                        <SelectorTalla
-                          tallas={tallasTempDisponibles}
-                          seleccionada={itemTempTallaId}
-                          onSelect={handleSelectTempTalla}
-                          ubicacionId={itemTempUbicacionId}
-                        />
-                      ) : (
-                        <div className="rounded-xl bg-gray-50 text-sm text-gray-400 text-center py-4">
-                          Sin stock disponible para este producto.
-                        </div>
+                      {itemTempSistemaLibre && (
+                        <>
+                          <label className="label">Selecciona la talla</label>
+                          <div className="flex flex-wrap gap-2">
+                            {todasLasTallas
+                              .filter((t) => t.sistema === itemTempSistemaLibre)
+                              .map((t) => (
+                                <button
+                                  key={t.id}
+                                  onClick={() => setItemTempTallaId(t.id)}
+                                  className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                                    itemTempTallaId === t.id
+                                      ? "bg-brand-blue border-brand-blue text-white shadow-md scale-105"
+                                      : "bg-white border-gray-200 text-gray-700 hover:border-brand-blue"
+                                  }`}
+                                >
+                                  {t.nombre}
+                                </button>
+                              ))}
+                          </div>
+                        </>
                       )}
                     </div>
 
-                    <div>
-                      <label className="label">
-                        Cantidad (max. {stockTempDisponible})
-                      </label>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() =>
-                            setItemTempCantidad(
-                              Math.max(1, itemTempCantidad - 1),
-                            )
-                          }
-                          className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl text-gray-700 flex items-center justify-center"
-                        >
-                          -
-                        </button>
-                        <span className="text-2xl font-bold text-gray-900 w-8 text-center">
-                          {itemTempCantidad}
-                        </span>
-                        <button
-                          onClick={() =>
-                            setItemTempCantidad(
-                              Math.min(stockTempDisponible, itemTempCantidad + 1),
-                            )
-                          }
-                          className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl text-gray-700 flex items-center justify-center"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="label">Precio</label>
+                        <label className="label">Cantidad</label>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => setItemTempCantidad(Math.max(1, itemTempCantidad - 1))}
+                            className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl text-gray-700 flex items-center justify-center"
+                          >
+                            -
+                          </button>
+                          <span className="text-xl font-bold text-gray-900 w-8 text-center">
+                            {itemTempCantidad}
+                          </span>
+                          <button
+                            onClick={() => setItemTempCantidad(itemTempCantidad + 1)}
+                            className="w-10 h-10 rounded-xl bg-gray-100 font-bold text-xl text-gray-700 flex items-center justify-center"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label">Precio Unitario</label>
                         <InputDinero
                           value={itemTempPrecioVenta}
                           onChange={(raw) => setItemTempPrecioVenta(raw)}
@@ -802,18 +1007,9 @@ export default function VentaPage() {
                           placeholder="0"
                         />
                       </div>
-                      <div>
-                        <label className="label">Descuento</label>
-                        <InputDinero
-                          value={itemTempDescuento}
-                          onChange={(raw) => setItemTempDescuento(raw)}
-                          className="input"
-                          placeholder="0"
-                        />
-                      </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 pt-2">
                       <Button
                         variant="secondary"
                         className="flex-1"
@@ -828,7 +1024,7 @@ export default function VentaPage() {
                         Agregar al pedido
                       </Button>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}
