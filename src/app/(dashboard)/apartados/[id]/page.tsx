@@ -140,6 +140,7 @@ export default function ApartadoDetallePage() {
         producto_id: raw?.producto_id ?? 0,
         talla_id: raw?.talla_id ?? 0,
         observacion: a.observacion,
+        canal: a.canal as CanalMovimiento ?? "venta_tienda",
       };
     });
 
