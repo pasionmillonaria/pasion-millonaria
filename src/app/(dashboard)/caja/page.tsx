@@ -503,15 +503,20 @@ function ModalCajaFuerte({ onClose, onSave, modo = "guardar" }: {
   modo?: "guardar" | "retirar";
 }) {
   const [valor, setValor] = useState("");
+  const [descripcion, setDescripcion] = useState("");
   const esRetiro = modo === "retirar";
 
   function handleSave() {
     const v = parseFloat(valor);
     if (!v || v <= 0) { toast.error("Ingresa un valor válido"); return; }
     const valorFinal = esRetiro ? -v : v;
+    
+    // Si no hay descripción, usar el default
+    const descFinal = descripcion.trim() || (esRetiro ? "Retiro de guardado" : "Guardado");
+
     onSave({
       tipo: "caja_fuerte",
-      descripcion: esRetiro ? "Retiro de guardado" : "Guardado",
+      descripcion: descFinal,
       productoId: null, productoRef: null, tallaId: null, tallaNombre: null,
       cantidad: 1, valor: valorFinal, metodoPago: "efectivo",
       montoEfectivo: valorFinal, montoTransferencia: 0,
@@ -532,6 +537,16 @@ function ModalCajaFuerte({ onClose, onSave, modo = "guardar" }: {
           <InputDinero value={valor} onChange={raw => setValor(raw)}
             onKeyDown={e => e.key === "Enter" && handleSave()}
             className="input text-xl font-bold" placeholder="0" autoFocus />
+        </div>
+        <div>
+          <label className="label">Descripción / Motivo (Opcional)</label>
+          <input
+            type="text"
+            value={descripcion}
+            onChange={e => setDescripcion(e.target.value)}
+            placeholder={esRetiro ? "Ej: Pago de mercancía" : "Ej: Sobrante del día"}
+            className="input"
+          />
         </div>
         <button
           onClick={handleSave}
