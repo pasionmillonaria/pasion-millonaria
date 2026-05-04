@@ -43,12 +43,24 @@ export default function BuscadorProducto({ onSelect, placeholder = "Buscar produ
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from("productos")
           .select(`*, categorias(nombre), lineas(nombre)`)
           .eq("activo", true)
           .or(`referencia.ilike.%${query}%,codigo.ilike.%${query}%`)
           .limit(8);
+
+        // Si no hay resultados con activo=true, intentar sin ese filtro
+        if (!error && (!data || data.length === 0)) {
+          const secondTry = await supabase
+            .from("productos")
+            .select(`*, categorias(nombre), lineas(nombre)`)
+            .or(`referencia.ilike.%${query}%,codigo.ilike.%${query}%`)
+            .limit(8);
+          if (secondTry.data && secondTry.data.length > 0) {
+            data = secondTry.data;
+          }
+        }
 
         if (error) {
           console.error("Error buscando productos:", error);

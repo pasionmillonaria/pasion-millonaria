@@ -382,8 +382,8 @@ export default function InicioPage() {
                 <Badge variant="warning">{stockBajo.length}</Badge>
               </div>
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {stockBajo.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50">
+                {stockBajo.map((s) => (
+                  <div key={`${s.referencia}-${s.talla}`} className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50">
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-sm truncate">{s.referencia}</p>
                       <p className="text-xs text-gray-500">{s.talla}</p>

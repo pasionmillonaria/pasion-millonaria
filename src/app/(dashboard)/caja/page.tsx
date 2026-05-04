@@ -1315,7 +1315,7 @@ export default function CajaPage() {
           </div>
 
           {/* Botones de acción */}
-          {cajaEstado === "abierta" && (
+          {cajaEstado === "abierta" && isAdmin && (
             <div className="grid grid-cols-2 gap-3 mb-6">
               <button onClick={() => setModalVenta(true)}
                 className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-3.5 rounded-2xl transition-colors active:scale-95">
@@ -1373,7 +1373,7 @@ export default function CajaPage() {
                         <div className="flex justify-center">
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${pagoColor}`}>{pagoLabel}</span>
                         </div>
-                        {cajaEstado === "abierta" && (
+                        {cajaEstado === "abierta" && isAdmin && (
                           <button onClick={() => setDeleteId(r.id)}
                             className="flex items-center justify-center p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-white/60 transition-colors">
                             <Trash2 className="w-4 h-4" />
@@ -1406,7 +1406,7 @@ export default function CajaPage() {
                       <p className={`text-base font-black ${colorValor}`}>
                         {esPositivo ? "+" : "−"}{formatCurrency(Math.abs(r.valor))}
                       </p>
-                      {cajaEstado === "abierta" && (
+                      {cajaEstado === "abierta" && isAdmin && (
                         <button onClick={() => setDeleteId(r.id)}
                           className="p-1.5 rounded-lg hover:bg-white/60 text-gray-400 hover:text-red-500 transition-colors">
                           <Trash2 className="w-4 h-4" />

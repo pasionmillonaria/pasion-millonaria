@@ -15,7 +15,7 @@ const navBase = [
   { href: "/apartados",  label: "Apartados",   icon: Bookmark },
 ];
 const navEmpleadoExtra = [
-  { href: "/caja/historial", label: "Historial", icon: History },
+  { href: "/caja",           label: "Caja",      icon: LayoutDashboard },
   { href: "/reportes",       label: "Reportes",  icon: BarChart2 },
 ];
 const navAdmin = [
