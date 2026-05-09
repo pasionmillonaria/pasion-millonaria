@@ -280,14 +280,21 @@ export default function InicioPage() {
                               </span>
                             </div>
 
-                            <div className="space-y-1">
+                            <div className="space-y-1.5 mt-2">
                               {pedido.items.map((item) => (
-                                <p
-                                  key={item.movimientoId}
-                                  className="text-xs text-gray-600 truncate"
-                                >
-                                  {item.cantidad}x {item.referencia} · Talla {item.talla}
-                                </p>
+                                <div key={item.movimientoId} className="flex items-center gap-2 bg-white px-2 py-1.5 rounded-lg border border-gray-100/50 shadow-sm">
+                                  <span className="text-[10px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-md border border-purple-100 shrink-0">
+                                    Cant: {item.cantidad}
+                                  </span>
+                                  <span className="text-[10px] font-semibold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md shrink-0">
+                                    Talla {item.talla}
+                                  </span>
+                                  {pedido.items.length > 1 && (
+                                    <p className="text-xs font-medium text-gray-700 truncate ml-1">
+                                      {item.referencia}
+                                    </p>
+                                  )}
+                                </div>
                               ))}
                             </div>
                           </Link>

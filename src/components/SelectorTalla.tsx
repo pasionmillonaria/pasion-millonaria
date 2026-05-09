@@ -22,8 +22,9 @@ export default function SelectorTalla({ tallas, seleccionada, onSelect, ubicacio
     <div className="grid grid-cols-4 gap-2">
       {tallas.map(t => {
         const stockTotal = t.stock_tienda + t.stock_bodega;
+        const stockUbicacion = ubicacionId === 1 ? t.stock_tienda : ubicacionId === 2 ? t.stock_bodega : stockTotal;
         const activo = seleccionada === t.talla_id;
-        const sinStock = stockTotal === 0;
+        const sinStock = stockUbicacion === 0;
         const bloqueado = sinStock && !permitirSinStock;
 
         return (
@@ -44,7 +45,7 @@ export default function SelectorTalla({ tallas, seleccionada, onSelect, ubicacio
               {t.talla_nombre}
             </span>
             <span className={cn("text-xs mt-0.5", activo ? "text-blue-100" : sinStock ? "text-orange-400" : "text-gray-400")}>
-              {sinStock && permitirSinStock ? "pedir" : `${stockTotal} uds`}
+              {sinStock && permitirSinStock ? "pedir" : `${stockUbicacion} uds`}
             </span>
           </button>
         );

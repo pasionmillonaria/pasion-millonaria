@@ -59,17 +59,13 @@ export default function TrasladoPage() {
     if (cantidad > stockOrigen) { toast.error("Stock insuficiente en origen"); return; }
     setLoading(true);
 
-    // Salida del origen + entrada al destino
+    // Salida del origen (el trigger 'actualizar_stock_tras_movimiento' automáticamente hace la entrada al destino)
     const { error } = await supabase.from("movimientos").insert([
       {
         producto_id: producto.id, talla_id: tallaId,
         ubicacion_id: origen, ubicacion_destino_id: destino,
         cantidad, tipo: "salida", canal: "traslado", usuario_id: null,
-      },
-      {
-        producto_id: producto.id, talla_id: tallaId,
-        ubicacion_id: destino, cantidad, tipo: "entrada", canal: "traslado", usuario_id: null,
-      },
+      }
     ]);
 
     if (error) { toast.error("Error: " + error.message); setLoading(false); return; }

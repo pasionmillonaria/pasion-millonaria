@@ -447,10 +447,52 @@ export default function ApartadoDetallePage() {
       toast.error(`Aún hay saldo pendiente de ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(grupo.totalSaldo)}`);
       return;
     }
-    const idsPendientes = grupo.items.filter(i => i.estado === "pendiente").map(i => i.id);
-    if (idsPendientes.length === 0) { toast.error("No hay prendas pendientes"); return; }
+    const itemsPendientes = grupo.items.filter(i => i.estado === "pendiente");
+    if (itemsPendientes.length === 0) { toast.error("No hay prendas pendientes"); return; }
+    
+    const idsPendientes = itemsPendientes.map(i => i.id);
     const { error } = await supabase.from("apartados").update({ estado: "entregado" }).in("id", idsPendientes);
     if (error) { toast.error("Error: " + error.message); return; }
+
+    const movsToInsert = [];
+    for (const item of itemsPendientes) {
+      // Siempre reversamos el inventario (haciendo una entrada temporal) antes de la salida real.
+      // Si el item estaba en tienda, esto reversa la reserva. Si venía de proveedor, esto le da entrada
+      // para poder darle salida sin que el stock quede negativo y rompa la base de datos.
+      movsToInsert.push({
+        producto_id: item.producto_id,
+        talla_id: item.talla_id,
+        ubicacion_id: 1,
+        cantidad: 1,
+        tipo: "entrada" as const,
+        canal: "ajuste",
+        nota: `Reversión/Ingreso temporal para entrega de Apartado #${grupo.grupoId}`,
+      });
+      
+      // Registramos la salida real con el canal de venta correspondiente
+      movsToInsert.push({
+        producto_id: item.producto_id,
+        talla_id: item.talla_id,
+        ubicacion_id: 1,
+        cantidad: 1,
+        tipo: "salida" as const,
+        canal: grupo.canal,
+        precio_venta: item.precio,
+        descuento: 0,
+        metodo_pago: null,
+        movimiento_ref: `Apartado #${grupo.grupoId}`,
+        nota: item.observacion,
+      });
+    }
+
+    if (movsToInsert.length > 0) {
+      const { error: movErr } = await supabase.from("movimientos").insert(movsToInsert);
+      if (movErr) {
+        console.error("Error al registrar movimientos:", movErr);
+        toast.error("Entregado, pero hubo un error al registrar en movimientos.");
+      }
+    }
+
     toast.success("Apartado marcado como entregado");
     await cargarDatos();
   }
