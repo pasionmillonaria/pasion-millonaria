@@ -454,7 +454,7 @@ export default function ApartadoDetallePage() {
     const { error } = await supabase.from("apartados").update({ estado: "entregado" }).in("id", idsPendientes);
     if (error) { toast.error("Error: " + error.message); return; }
 
-    const movsToInsert = [];
+    const movsToInsert: any[] = [];
     for (const item of itemsPendientes) {
       // Siempre reversamos el inventario (haciendo una entrada temporal) antes de la salida real.
       // Si el item estaba en tienda, esto reversa la reserva. Si venía de proveedor, esto le da entrada
