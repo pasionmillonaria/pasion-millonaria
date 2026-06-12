@@ -28,7 +28,7 @@ export async function loginAsAdmin(page: Page, pin = process.env.ADMIN_PIN ?? "1
 }
 
 /** GET contra PostgREST del laboratorio local con la anon key. */
-async function restGet(request: APIRequestContext, path: string) {
+export async function restGet(request: APIRequestContext, path: string) {
   const res = await request.get(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
       apikey: SUPABASE_ANON_KEY,

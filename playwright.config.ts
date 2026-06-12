@@ -37,14 +37,22 @@ cargarEnvLocal();
  */
 export default defineConfig({
   testDir: "./e2e",
+  // Reinicia el laboratorio al seed antes de toda la suite (tests repetibles).
+  globalSetup: "./e2e/global-setup.ts",
   // Falla la suite si alguien deja un test.only por error.
   forbidOnly: !!process.env.CI,
   // Reintentos solo en CI; en local, cero para ver el fallo de una.
   retries: process.env.CI ? 1 : 0,
+  // Un solo worker: los tests comparten la misma base local, así no se pisan.
+  workers: 1,
   reporter: "html",
 
   use: {
     baseURL: "http://localhost:3000",
+    // Fija el navegador en UTC para que la fecha local del navegador coincida
+    // con CURRENT_DATE de la base (UTC). Asi el seed (que crea la caja del dia
+    // con CURRENT_DATE) y la app (que usa la fecha local) hablan del mismo dia.
+    timezoneId: "UTC",
     // Captura traza y screenshot solo cuando un test falla, para depurar.
     trace: "on-first-retry",
     screenshot: "only-on-failure",
