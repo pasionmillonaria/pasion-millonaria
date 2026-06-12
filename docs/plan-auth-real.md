@@ -13,8 +13,8 @@ respaldo, rollback de un clic).
 
 ## ░ DÓNDE NOS QUEDAMOS (actualizar siempre)
 
-- **Última actualización:** 2026-06-12 — plan creado, aún sin ejecutar ningún paso.
-- **Próximo paso:** Fase A, paso A1 (crear usuarios reales en Supabase Auth de staging).
+- **Última actualización:** 2026-06-12 — plan creado y **4 decisiones abiertas resueltas** (ver "Decisiones confirmadas"). Aún sin ejecutar ningún paso de código.
+- **Próximo paso:** Fase A, paso A1 (crear usuarios reales en Supabase Auth de staging: `admin@pasionmillonaria.app` y `supervisor@pasionmillonaria.app`, confirmación de email desactivada).
 - **Rama de trabajo sugerida:** `feat/auth-real` (crear desde `main` cuando arranque la ejecución).
 - **Resumen de avance:** 0 / 7 fases completas. Nada aplicado a prod. PIN sigue siendo el login activo.
 
@@ -116,8 +116,9 @@ respaldo, rollback de un clic).
   - lectura para `admin` y `supervisor` (ambos ven todo, incluidos montos);
   - escritura solo donde el permiso corresponda (ej. `movimientos` insert → `pos.sell`/`inventory.manage`; `registros_caja` → `caja.register`; etc.).
 - [ ] **D2.** Cerrar los huecos conocidos: `registros_caja` y `gastos` no deben permitir DELETE con anon. `movimientos` sigue append-only (anulación = contramovimiento + marca, no DELETE).
-- [ ] **D3.** (Opcional aquí o luego) RPCs transaccionales para escrituras críticas (venta) con `UPDATE ... WHERE cantidad >= n`, grants por permiso. Esto también resuelve la race condition de stock.
-- [ ] **D4.** Mantener las policies permisivas viejas activas en paralelo hasta validar (no romper el flujo con PIN/anon todavía).
+- [ ] **D3.** Mantener las policies permisivas viejas activas en paralelo hasta validar (no romper el flujo con PIN/anon todavía).
+
+> **Movido fuera de este plan:** la RPC transaccional de venta (`UPDATE ... WHERE cantidad >= n`) que resuelve la race condition de stock se hará como **ítem aparte de la Fase 2**, después de la auth (decisión 2026-06-12). No se mezcla con la migración de auth.
 
 **Salida de fase:** existen las reglas reales de seguridad, conviviendo con las viejas, listas para validarse.
 
@@ -164,12 +165,12 @@ respaldo, rollback de un clic).
 - RLS → peticiones REST con el token de cada rol, verificando que se permita/rechace.
 - Restaurar laboratorio entre corridas → `npx supabase db reset` (ya integrado en `e2e/global-setup.ts`).
 
-## Preguntas abiertas / decisiones a confirmar antes de ejecutar
+## Decisiones confirmadas (2026-06-12)
 
-- [ ] ¿Correos reales para los usuarios admin/supervisor, o usuarios sin email verificado (solo contraseña)?
-- [ ] ¿Recuperación de contraseña por correo (magic link / reset) o el admin la gestiona manualmente?
-- [ ] Nombre final del feature flag y su default (propuesto: `NEXT_PUBLIC_AUTH_MODE='pin'`).
-- [ ] ¿La race condition de stock (RPC de venta, D3) se hace dentro de esta migración o como ítem aparte de la Fase 2?
+- [x] **Usuarios sin correo real / sin verificación.** Se usan correos internos inventados (ej. `admin@pasionmillonaria.app`, `supervisor@pasionmillonaria.app`) con confirmación de email DESACTIVADA. Equivale a "usuario + contraseña", sin depender de correos reales.
+- [x] **El admin gestiona las contraseñas manualmente** desde el dashboard de Supabase. Sin magic link ni recuperación por correo.
+- [x] **Feature flag `NEXT_PUBLIC_AUTH_MODE`** con valores `'pin' | 'supabase'`, default `'pin'`.
+- [x] **La race condition de stock (RPC de venta) se hace APARTE**, como ítem separado de la Fase 2 (después de la auth). Razón: regla "un cambio a la vez"; el constraint `stock >= 0` ya impide el dato negativo, así que esto es pulir un error raro, no tapar una fuga. → El paso D3 sale de este plan (ver nota en Fase D).
 
 ## Referencias
 
