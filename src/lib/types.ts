@@ -364,6 +364,7 @@ export interface Database {
           id: number;
           caja_diaria_id: number;
           movimiento_id: number | null;
+          abono_id: number | null;
           fecha: string;
           hora: string;
           tipo: TipoRegistroCaja;
@@ -378,6 +379,7 @@ export interface Database {
         Insert: {
           caja_diaria_id: number;
           movimiento_id?: number | null;
+          abono_id?: number | null;
           fecha: string;
           hora?: string;
           tipo: TipoRegistroCaja;
@@ -391,6 +393,7 @@ export interface Database {
         Update: {
           caja_diaria_id?: number;
           movimiento_id?: number | null;
+          abono_id?: number | null;
           fecha?: string;
           hora?: string;
           tipo?: TipoRegistroCaja;
@@ -531,7 +534,16 @@ export interface Database {
         Relationships: [];
       };
     };
-    Functions: Record<string, never>;
+    Functions: {
+      corregir_metodo_abono: {
+        Args: { p_abono_id: number; p_metodo: string };
+        Returns: { abono_id: number; metodo: string; caja_ajustada: boolean };
+      };
+      anular_abono: {
+        Args: { p_abono_id: number };
+        Returns: { abono_id: number; caja_ajustada: boolean };
+      };
+    };
     Enums: Record<string, never>;
   };
 }

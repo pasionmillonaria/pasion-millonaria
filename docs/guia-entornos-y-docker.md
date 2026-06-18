@@ -189,3 +189,52 @@ Existe una variable de usuario `SUPABASE_ACCESS_TOKEN` que la CLI prefiere sobre
 del navegador. Si un comando da `Unauthorized`, ese token está revocado: genera uno nuevo
 en https://supabase.com/account/tokens y guárdalo con
 `setx SUPABASE_ACCESS_TOKEN "sbp_..."`.
+
+---
+
+## 9. Reiniciar limpio (cuando "sigue apareciendo lo de antes")
+
+Si hiciste un cambio (en código o en la base) y la app **sigue mostrando el resultado
+viejo**, casi siempre es una de dos cosas: el navegador tiene el bundle viejo en caché, o
+el servidor de dev no recompiló. Reinicia en este orden, de lo más leve a lo más fuerte:
+
+### Paso 1 — Hard refresh del navegador (lo primero a probar)
+En la pestaña de la app (`localhost:3000`): **`Ctrl + Shift + R`**. Descarta el JavaScript
+cacheado y vuelve a pedirlo. Resuelve la mayoría de los casos de "se ve pegado".
+
+### Paso 2 — Reiniciar el servidor de la app con caché limpia
+Si el hard refresh no basta, detén el dev server (`Ctrl + C` en su terminal) y arráncalo
+recompilando desde cero:
+```powershell
+Remove-Item -Recurse -Force .next   # borra la caché de compilación de Next.js
+npm run dev                          # -> http://localhost:3000
+```
+Luego repite el hard refresh del navegador.
+
+### Paso 3 — Datos viejos de prueba: reiniciar la base
+Si lo que ves viejo son **datos** (un apartado, abono o registro de una prueba anterior),
+vuelve la base local al seed limpio:
+```powershell
+npx supabase db reset
+```
+
+### Reinicio total (cuando quieras empezar de cero del todo)
+```powershell
+# 1. Apagar
+#    Ctrl + C en la terminal del dev server
+npx supabase stop
+
+# 2. Encender de nuevo (Docker Desktop abierto)
+npx supabase start
+npx supabase db reset                # base limpia con todas las migraciones
+
+# 3. App con caché limpia
+Remove-Item -Recurse -Force .next
+npm run dev
+#    luego Ctrl + Shift + R en el navegador
+```
+
+> Nota sobre la fecha en el laboratorio: el seed crea la caja del día con fecha **UTC**,
+> mientras la app usa la fecha **local** (Colombia, UTC-5). De noche eso genera 1 día de
+> desfase y puede confundir al revisar la caja del día. Es un detalle solo del laboratorio
+> (en producción las cajas las crea la app con fecha local, sin desfase).

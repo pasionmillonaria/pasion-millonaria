@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Download, TrendingUp, Wallet, ArrowUpCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatMetodoPago } from "@/lib/utils";
 import Spinner from "@/components/ui/Spinner";
 import Button from "@/components/ui/Button";
 import type { MetodoPago, TipoRegistroCaja, VResumenCaja } from "@/lib/types";
@@ -258,7 +258,7 @@ export default function HistorialDetallePage() {
               <div key={i} className={`${TIPO_ROW[r.tipo]} rounded-xl px-3 py-2.5 flex justify-between items-center`}>
                 <div>
                   <span className="text-sm font-semibold text-gray-900">{r.descripcion}</span>
-                  <div className="text-xs text-gray-400 mt-0.5">{r.hora.slice(0, 5)} · <span className="capitalize">{r.metodoPago}</span></div>
+                  <div className="text-xs text-gray-400 mt-0.5">{r.hora.slice(0, 5)} · <span>{formatMetodoPago(r.metodoPago)}</span></div>
                 </div>
                 <span className="font-black text-sm text-red-600 shrink-0 ml-2">−{formatCurrency(r.valor)}</span>
               </div>
