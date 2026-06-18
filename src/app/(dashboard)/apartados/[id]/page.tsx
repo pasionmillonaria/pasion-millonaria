@@ -439,7 +439,7 @@ export default function ApartadoDetallePage() {
 
     if (nuevoSaldo <= 0) {
       if (confirm("¡El apartado está completamente pagado! ¿Marcarlo como entregado ahora?")) {
-        await marcarEntregado();
+        await marcarEntregado(nuevoSaldo);
       }
     }
   }
@@ -497,10 +497,14 @@ export default function ApartadoDetallePage() {
     await cargarDatos();
   }
 
-  async function marcarEntregado() {
+  async function marcarEntregado(saldoOverride?: number) {
     if (!grupo || loadingCancel) return;
-    if (grupo.totalSaldo > 0) {
-      toast.error(`Aún hay saldo pendiente de ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(grupo.totalSaldo)}`);
+    // Al encadenarse tras registrar el último abono, el estado `grupo` aún no
+    // refleja el saldo nuevo (React no ha re-renderizado); por eso aceptamos el
+    // saldo recién calculado como override.
+    const saldo = saldoOverride ?? grupo.totalSaldo;
+    if (saldo > 0) {
+      toast.error(`Aún hay saldo pendiente de ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(saldo)}`);
       return;
     }
     const itemsPendientes = grupo.items.filter(i => i.estado === "pendiente");
@@ -789,7 +793,7 @@ export default function ApartadoDetallePage() {
           <Button variant="secondary" className="w-full" onClick={() => { setNuevoProd(null); setModalAgregar(true); }}>
             <Plus className="w-5 h-5" /> Agregar prenda al pedido
           </Button>
-          <Button variant="primary" className="w-full" onClick={marcarEntregado}>
+          <Button variant="primary" className="w-full" onClick={() => marcarEntregado()}>
             <CheckCircle className="w-5 h-5" /> Marcar como Entregado
           </Button>
           <Button variant="danger" className="w-full" onClick={cancelarApartado} loading={loadingCancel}>
