@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
-import { formatCurrency, LABELS_CANAL } from "@/lib/utils";
+import { formatCurrency, formatMetodoPago, LABELS_CANAL } from "@/lib/utils";
 import { buildPedidosVenta, CANALES_PEDIDO, type PedidoVentaResumen } from "@/lib/pedidos-venta";
 import type { VApartadosPendientes, VStockBajo, VResumenCajaHoy } from "@/lib/types";
 import Spinner from "@/components/ui/Spinner";
@@ -370,7 +370,7 @@ export default function InicioPage() {
                 {resumenHoy.map(r => (
                   <div key={r.metodo_pago} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
                     <div>
-                      <p className="text-xs text-gray-500 capitalize">{r.metodo_pago}</p>
+                      <p className="text-xs text-gray-500">{formatMetodoPago(r.metodo_pago)}</p>
                       <p className="text-xs text-gray-400">{r.cantidad} venta{r.cantidad !== 1 ? "s" : ""}</p>
                     </div>
                     <p className="font-bold text-gray-900 text-sm">{formatCurrency(r.total)}</p>

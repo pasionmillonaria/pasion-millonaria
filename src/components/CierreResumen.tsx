@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Wallet, Shield } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatMetodoPago } from "@/lib/utils";
 import type { Movimiento, Gasto, CajaDiaria } from "@/lib/types";
 
 interface CierreResumenProps {
@@ -79,7 +79,7 @@ export default function CierreResumen({ fecha, ventas, gastos, otrosIngresos, ca
                 <div key={i} className="flex justify-between items-center text-sm py-2 px-3 bg-gray-50/50 rounded-xl">
                   <div>
                     <p className="font-bold text-gray-800">{v.cantidad}x {v.referencia || "Venta"}</p>
-                    <p className="text-[10px] text-gray-400 font-medium">Talla: {v.talla || "N/A"} · {v.metodo_pago}</p>
+                    <p className="text-[10px] text-gray-400 font-medium">Talla: {v.talla || "N/A"} · {formatMetodoPago(v.metodo_pago)}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-black text-gray-900">{formatCurrency(v.total)}</p>

@@ -59,6 +59,11 @@ export const LABELS_METODO_PAGO: Record<string, string> = {
   sin_confirmar: "Sin confirmar",
 };
 
+export function formatMetodoPago(metodo: string | null | undefined): string {
+  if (!metodo) return "—";
+  return LABELS_METODO_PAGO[metodo] ?? metodo;
+}
+
 export const LABELS_CANAL: Record<string, string> = {
   venta_tienda: "Venta Tienda",
   domicilio: "Domicilio",

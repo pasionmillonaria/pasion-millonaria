@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Plus, CheckCircle, XCircle, Phone, Pencil, Store, PackageCheck, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, formatDate, formatDateTime, getLocalDateString, getLocalTimeString } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, formatMetodoPago, getLocalDateString, getLocalTimeString, LABELS_ESTADO_APARTADO } from "@/lib/utils";
 import InputDinero from "@/components/ui/InputDinero";
 import SelectorTalla from "@/components/SelectorTalla";
 import ListaProductos from "@/components/ListaProductos";
@@ -87,6 +87,12 @@ export default function ApartadoDetallePage() {
 
   const [editCanal, setEditCanal] = useState<CanalMovimiento>("venta_tienda");
   const [loadingCanal, setLoadingCanal] = useState(false);
+
+  // Modal corregir método de un abono ya registrado
+  const [abonoACorregir, setAbonoACorregir] = useState<Abono | null>(null);
+  const [metodoCorreccion, setMetodoCorreccion] = useState<MetodoPago>("efectivo");
+  const [loadingCorreccion, setLoadingCorreccion] = useState(false);
+  const [loadingAnular, setLoadingAnular] = useState(false);
 
   // Modal agregar prenda
   const [modalAgregar, setModalAgregar] = useState(false);
@@ -372,59 +378,56 @@ export default function ApartadoDetallePage() {
     setLoadingAbono(true);
 
     // Registrar el abono como una sola entrada contra el primer apartado del grupo
-    const { error } = await supabase.from("abonos").insert({
+    const { data: abonoCreado, error } = await supabase.from("abonos").insert({
       apartado_id: grupoId,
       grupo_id: grupoId,
       monto,
       metodo_pago: metodoPagoAbono,
       registrado_por: null,
-    });
-    if (error) { toast.error("Error: " + error.message); setLoadingAbono(false); return; }
+    }).select("id").single();
+    if (error || !abonoCreado) { toast.error("Error: " + (error?.message ?? "")); setLoadingAbono(false); return; }
 
-    // Registrar en caja: buscar caja abierta
+    // Registrar en caja: usar la caja de HOY (no cualquier caja abierta de otro
+    // día, que dejaría el abono fuera de la vista de caja). Si no existe, crearla;
+    // si está cerrada, avisar y no sumarla (no reabrimos un día ya cuadrado).
+    const hoy = getLocalDateString();
     let cajaDiariaId: number | null = null;
-    const { data: cajaAbierta } = await supabase
-      .from("caja_diaria").select("id")
-      .eq("estado", "abierta")
-      .order("id", { ascending: false }).limit(1).maybeSingle();
+    let cajaHoyCerrada = false;
+    const { data: cajaHoy } = await supabase
+      .from("caja_diaria").select("id, estado")
+      .eq("fecha", hoy).maybeSingle();
 
-    if (cajaAbierta) {
-      cajaDiariaId = cajaAbierta.id;
+    if (cajaHoy) {
+      if (cajaHoy.estado === "abierta") cajaDiariaId = cajaHoy.id;
+      else cajaHoyCerrada = true;
     } else {
-      // No hay caja abierta. Intentar crear una para hoy si no existe.
-      const hoy = getLocalDateString();
-      const { data: cajaHoy } = await supabase
-        .from("caja_diaria").select("id, estado")
-        .eq("fecha", hoy).maybeSingle();
-        
-      if (!cajaHoy) {
-        // Crear automáticamente la caja para hoy
-        const { data: ultima } = await supabase
-          .from("v_resumen_caja" as any).select("saldo_final")
-          .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
-        const saldoInicial = (ultima as any)?.saldo_final ?? 0;
-        const { data: nueva } = await supabase
-          .from("caja_diaria")
-          .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
-          .select("id").maybeSingle();
-        cajaDiariaId = nueva?.id ?? null;
-      }
+      // No hay caja de hoy: crearla automáticamente (abierta).
+      const { data: ultima } = await supabase
+        .from("v_resumen_caja" as any).select("saldo_final")
+        .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
+      const saldoInicial = (ultima as any)?.saldo_final ?? 0;
+      const { data: nueva } = await supabase
+        .from("caja_diaria")
+        .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
+        .select("id").maybeSingle();
+      cajaDiariaId = nueva?.id ?? null;
     }
-    // Si la caja está cerrada, no se agrega a registros_caja
 
     if (cajaDiariaId && grupo.canal === "venta_tienda") {
-      const hoy = getLocalDateString();
       const hora = getLocalTimeString();
       const esEfectivo = metodoPagoAbono === "efectivo";
       const { error: cajaErr } = await supabase.from("registros_caja").insert({
         caja_diaria_id: cajaDiariaId, fecha: hoy, hora,
         tipo: "ingreso" as const,
+        abono_id: abonoCreado.id,
         descripcion: `Abono apartado #${grupoId} — ${grupo.clienteNombre}`,
         valor: monto, metodo_pago: metodoPagoAbono,
         monto_efectivo: esEfectivo ? monto : 0,
         monto_transferencia: !esEfectivo ? monto : 0,
       });
       if (cajaErr) toast.error("Abono guardado, pero error al registrar en caja: " + cajaErr.message);
+    } else if (cajaHoyCerrada && grupo.canal === "venta_tienda") {
+      toast("Abono guardado. La caja de hoy ya está cerrada, así que NO se sumó a la caja.", { icon: "⚠️", duration: 6000 });
     }
 
     const nuevoSaldo = grupo.totalSaldo - monto;
@@ -436,15 +439,72 @@ export default function ApartadoDetallePage() {
 
     if (nuevoSaldo <= 0) {
       if (confirm("¡El apartado está completamente pagado! ¿Marcarlo como entregado ahora?")) {
-        await marcarEntregado();
+        await marcarEntregado(nuevoSaldo);
       }
     }
   }
 
-  async function marcarEntregado() {
+  async function corregirMetodoAbono() {
+    if (!abonoACorregir || loadingCorreccion) return;
+    if (metodoCorreccion === abonoACorregir.metodo_pago) { setAbonoACorregir(null); return; }
+    setLoadingCorreccion(true);
+
+    const res = await fetch("/api/corregir-abono", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ abono_id: abonoACorregir.id, metodo_pago: metodoCorreccion }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      toast.error("Error: " + (data?.error ?? "no se pudo corregir el abono"));
+      setLoadingCorreccion(false);
+      return;
+    }
+
+    toast.success(
+      data?.caja_ajustada
+        ? "Método corregido — también se ajustó en caja"
+        : "Método corregido (este abono no tenía ingreso de caja vinculado)",
+    );
+    setAbonoACorregir(null);
+    setLoadingCorreccion(false);
+    await cargarDatos();
+  }
+
+  async function anularAbono(abono: Abono) {
+    if (loadingAnular || loadingCorreccion) return;
+    if (!confirm(`¿Anular el abono de ${formatCurrency(abono.monto)}? Se quitará del apartado y, si está en caja, también de la caja.`)) return;
+    setLoadingAnular(true);
+
+    const res = await fetch("/api/anular-abono", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ abono_id: abono.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      toast.error(data?.error ?? "No se pudo anular el abono");
+      setLoadingAnular(false);
+      return;
+    }
+
+    toast.success(
+      data?.caja_ajustada ? "Abono anulado — también se quitó de caja" : "Abono anulado",
+    );
+    setLoadingAnular(false);
+    await cargarDatos();
+  }
+
+  async function marcarEntregado(saldoOverride?: number) {
     if (!grupo || loadingCancel) return;
-    if (grupo.totalSaldo > 0) {
-      toast.error(`Aún hay saldo pendiente de ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(grupo.totalSaldo)}`);
+    // Al encadenarse tras registrar el último abono, el estado `grupo` aún no
+    // refleja el saldo nuevo (React no ha re-renderizado); por eso aceptamos el
+    // saldo recién calculado como override.
+    const saldo = saldoOverride ?? grupo.totalSaldo;
+    if (saldo > 0) {
+      toast.error(`Aún hay saldo pendiente de ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(saldo)}`);
       return;
     }
     const itemsPendientes = grupo.items.filter(i => i.estado === "pendiente");
@@ -534,11 +594,8 @@ export default function ApartadoDetallePage() {
         </button>
         <h1 className="text-xl font-bold text-gray-900">Apartado #{grupoId}</h1>
         <Badge variant={esPendiente ? "warning" : grupo.estadoGrupo === "entregado" ? "success" : "danger"}>
-          {grupo.estadoGrupo}
+          {LABELS_ESTADO_APARTADO[grupo.estadoGrupo] ?? grupo.estadoGrupo}
         </Badge>
-         <Badge variant={esPendiente ? "warning" : grupo.estadoGrupo === "entregado" ? "success" : "danger"}>
-           {grupo.estadoGrupo}
-         </Badge>
        </div>
 
       {/* Info cliente */}
@@ -612,7 +669,7 @@ export default function ApartadoDetallePage() {
                     <p className="font-bold text-gray-900">{item.referencia}</p>
                     {item.estado !== "pendiente" && (
                       <Badge variant={item.estado === "entregado" ? "success" : "danger"}>
-                        {item.estado}
+                        {LABELS_ESTADO_APARTADO[item.estado] ?? item.estado}
                       </Badge>
                     )}
                   </div>
@@ -703,7 +760,23 @@ export default function ApartadoDetallePage() {
                   <p className="font-semibold text-sm">{formatCurrency(ab.monto)}</p>
                   <p className="text-xs text-gray-400">{formatDateTime(ab.fecha)}</p>
                 </div>
-                <Badge variant="info">{ab.metodo_pago}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="info">{formatMetodoPago(ab.metodo_pago)}</Badge>
+                  <button
+                    onClick={() => { setAbonoACorregir(ab); setMetodoCorreccion(ab.metodo_pago); }}
+                    className="flex items-center gap-1 text-xs text-brand-blue font-medium hover:underline"
+                  >
+                    <Pencil className="w-3 h-3" /> Corregir
+                  </button>
+                  {esPendiente && (
+                    <button
+                      onClick={() => anularAbono(ab)}
+                      className="flex items-center gap-1 text-xs text-red-400 font-medium hover:text-red-600 hover:underline"
+                    >
+                      <Trash2 className="w-3 h-3" /> Anular
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -720,7 +793,7 @@ export default function ApartadoDetallePage() {
           <Button variant="secondary" className="w-full" onClick={() => { setNuevoProd(null); setModalAgregar(true); }}>
             <Plus className="w-5 h-5" /> Agregar prenda al pedido
           </Button>
-          <Button variant="primary" className="w-full" onClick={marcarEntregado}>
+          <Button variant="primary" className="w-full" onClick={() => marcarEntregado()}>
             <CheckCircle className="w-5 h-5" /> Marcar como Entregado
           </Button>
           <Button variant="danger" className="w-full" onClick={cancelarApartado} loading={loadingCancel}>
@@ -753,6 +826,33 @@ export default function ApartadoDetallePage() {
             Confirmar Abono
           </Button>
         </div>
+      </Modal>
+
+      {/* Modal corregir método de abono */}
+      <Modal open={!!abonoACorregir} onClose={() => setAbonoACorregir(null)} title="Corregir método de pago">
+        {abonoACorregir && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Abono de <b>{formatCurrency(abonoACorregir.monto)}</b> registrado el {formatDateTime(abonoACorregir.fecha)}.
+              Si tiene un ingreso en caja vinculado, también se ajustará.
+            </p>
+            <div>
+              <label className="label">Método correcto</label>
+              <div className="grid grid-cols-2 gap-2">
+                {METODOS.map(m => (
+                  <button key={m.value} onClick={() => setMetodoCorreccion(m.value)}
+                    className={`py-3 rounded-xl text-sm font-medium ${metodoCorreccion === m.value ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-600"}`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Button className="w-full" onClick={corregirMetodoAbono} loading={loadingCorreccion}
+              disabled={metodoCorreccion === abonoACorregir.metodo_pago}>
+              Guardar corrección
+            </Button>
+          </div>
+        )}
       </Modal>
 
       {/* Modal editar prenda */}

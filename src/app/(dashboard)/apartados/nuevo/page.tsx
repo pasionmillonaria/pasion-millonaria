@@ -237,57 +237,55 @@ export default function NuevoApartadoPage() {
 
     // Registrar abono inicial y vincularlo a la caja si está abierta
     if (abonoNum > 0 && grupoId) {
-      const { error: abonoErr } = await supabase.from("abonos").insert({
+      const { data: abonoCreado, error: abonoErr } = await supabase.from("abonos").insert({
         apartado_id: grupoId,
         grupo_id: grupoId,
         monto: abonoNum,
         metodo_pago: metodoPago,
         registrado_por: null,
-      });
-      if (abonoErr) { toast.error("Error al guardar abono: " + abonoErr.message); setLoading(false); return; }
+      }).select("id").single();
+      if (abonoErr || !abonoCreado) { toast.error("Error al guardar abono: " + (abonoErr?.message ?? "")); setLoading(false); return; }
 
-      // Registrar en caja: buscar caja abierta
+      // Registrar en caja: usar la caja de HOY (no cualquier caja abierta de otro
+      // día). Si no existe, crearla; si está cerrada, avisar y no sumarla.
+      const hoy = getLocalDateString();
       let cajaDiariaId: number | null = null;
-      const { data: cajaAbierta } = await supabase
-        .from("caja_diaria").select("id")
-        .eq("estado", "abierta")
-        .order("id", { ascending: false }).limit(1).maybeSingle();
+      let cajaHoyCerrada = false;
+      const { data: cajaHoy } = await supabase
+        .from("caja_diaria").select("id, estado")
+        .eq("fecha", hoy).maybeSingle();
 
-      if (cajaAbierta) {
-        cajaDiariaId = cajaAbierta.id;
+      if (cajaHoy) {
+        if (cajaHoy.estado === "abierta") cajaDiariaId = cajaHoy.id;
+        else cajaHoyCerrada = true;
       } else {
-        // No hay caja abierta. Intentar crear una para hoy si no existe.
-        const hoy = getLocalDateString();
-        const { data: cajaHoy } = await supabase
-          .from("caja_diaria").select("id, estado")
-          .eq("fecha", hoy).maybeSingle();
-          
-        if (!cajaHoy) {
-          const { data: ultima } = await supabase
-            .from("v_resumen_caja" as any).select("saldo_final")
-            .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
-          const saldoInicial = (ultima as any)?.saldo_final ?? 0;
-          const { data: nueva } = await supabase
-            .from("caja_diaria")
-            .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
-            .select("id").maybeSingle();
-          cajaDiariaId = nueva?.id ?? null;
-        }
+        // No hay caja de hoy: crearla automáticamente (abierta).
+        const { data: ultima } = await supabase
+          .from("v_resumen_caja" as any).select("saldo_final")
+          .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
+        const saldoInicial = (ultima as any)?.saldo_final ?? 0;
+        const { data: nueva } = await supabase
+          .from("caja_diaria")
+          .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
+          .select("id").maybeSingle();
+        cajaDiariaId = nueva?.id ?? null;
       }
 
       if (cajaDiariaId && canal === "venta_tienda") {
-        const hoy = getLocalDateString();
         const hora = getLocalTimeString();
         const esEfectivo = metodoPago === "efectivo";
         const { error: cajaErr } = await supabase.from("registros_caja").insert({
           caja_diaria_id: cajaDiariaId, fecha: hoy, hora,
           tipo: "ingreso" as const,
+          abono_id: abonoCreado.id,
           descripcion: `Abono inicial apartado — ${clienteNombre.trim()}`,
           valor: abonoNum, metodo_pago: metodoPago,
           monto_efectivo: esEfectivo ? abonoNum : 0,
           monto_transferencia: !esEfectivo ? abonoNum : 0,
         });
         if (cajaErr) toast.error("Abono guardado, pero error al registrarlo en caja: " + cajaErr.message);
+      } else if (cajaHoyCerrada && canal === "venta_tienda") {
+        toast("Apartado creado. La caja de hoy ya está cerrada, así que el abono NO se sumó a la caja.", { icon: "⚠️", duration: 6000 });
       }
     }
 

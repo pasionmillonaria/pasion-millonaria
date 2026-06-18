@@ -27,6 +27,7 @@ interface RegistroLocal {
   id: string;
   dbId?: number;
   movimientoId?: number;
+  abonoId?: number | null;
   fecha: string;
   hora: string;
   tipo: TipoRegistroCaja;
@@ -895,6 +896,7 @@ export default function CajaPage() {
       id: genId(),
       dbId: r.id,
       movimientoId: r.movimiento_id ?? undefined,
+      abonoId: r.abono_id ?? null,
       fecha: r.fecha,
       hora: r.hora ?? "00:00:00",
       tipo: r.tipo as TipoRegistroCaja,
@@ -1123,8 +1125,19 @@ export default function CajaPage() {
           return;
         }
       } else {
-        // Gastos, ingresos, caja_fuerte o ventas sin movimiento: solo borrar registro de caja
-        await supabase.from("registros_caja").delete().eq("id", reg.dbId);
+        // Gastos, ingresos, caja_fuerte o ventas sin movimiento: borrar vía API
+        // (service role). Bloquea ingresos vinculados a un abono.
+        const res = await fetch("/api/eliminar-registro-caja", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: reg.dbId }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json().catch(() => ({ error: "Error desconocido" }));
+          toast.error(error ?? res.statusText);
+          setLoadingDelete(false);
+          return;
+        }
       }
     }
 
@@ -1418,10 +1431,15 @@ export default function CajaPage() {
                       <p className="text-xs text-gray-400">{r.hora.slice(0, 5)}</p>
                     </div>
                     <div className="flex items-center gap-2 ml-3">
+                      {(r.tipo === "ingreso" || r.tipo === "gasto") && r.metodoPago && (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getMetodoBadge(r.metodoPago)}`}>
+                          {getMetodoLabel(r.metodoPago)}
+                        </span>
+                      )}
                       <p className={`text-base font-black ${colorValor}`}>
                         {esPositivo ? "+" : "−"}{formatCurrency(Math.abs(r.valor))}
                       </p>
-                      {cajaEstado === "abierta" && isAdmin && (
+                      {cajaEstado === "abierta" && isAdmin && !r.abonoId && (
                         <button onClick={() => setDeleteId(r.id)}
                           className="p-1.5 rounded-lg hover:bg-white/60 text-gray-400 hover:text-red-500 transition-colors">
                           <Trash2 className="w-4 h-4" />
