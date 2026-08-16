@@ -6,7 +6,7 @@ import { Bookmark, Plus, ChevronRight, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Abono, VApartadosPendientes } from "@/lib/types";
-import { calcularEstadoGrupoApartado, calcularResumenFinancieroApartado } from "@/lib/apartados";
+import { calcularEstadoGrupoApartado, calcularResumenFinancieroApartado, describirPrendasApartado } from "@/lib/apartados";
 import Spinner from "@/components/ui/Spinner";
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
@@ -189,11 +189,9 @@ export default function ApartadosPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 truncate">{g.clienteNombre}</p>
                  <div className="flex items-center gap-2 mt-0.5">
-                   <p className="text-xs text-gray-500 truncate">
-                     {g.items.length === 1
-                       ? `${g.items[0].referencia} — Talla ${g.items[0].talla}`
-                       : g.items.map(i => i.referencia).join(", ")}
-                   </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {describirPrendasApartado(g.items)}
+                    </p>
                    {g.canal !== "venta_tienda" && (
                      <Badge variant="info" className="text-[9px] px-1.5 py-0.5 leading-none h-fit">
                        {g.canal === "domicilio" ? "Domicilio" : "Envío"}

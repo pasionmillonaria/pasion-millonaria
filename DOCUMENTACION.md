@@ -274,7 +274,7 @@ Cada tarjeta muestra:
 
 - Nombre y teléfono del cliente (con botón para llamar)
 - Fecha del apartado
-- Lista de prendas con: referencia, talla, precio, estado, badge "En tienda" o "Pendiente de llegada"
+- Lista de prendas agrupadas por referencia, talla, precio, estado y ubicación. Cada grupo muestra cantidad, precio unitario y subtotal, con opción para gestionar unidades individuales.
 
 ### Información financiera (solo Admin)
 

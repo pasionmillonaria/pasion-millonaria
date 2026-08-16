@@ -12,7 +12,7 @@ import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency, formatMetodoPago, LABELS_CANAL } from "@/lib/utils";
 import { buildPedidosVenta, CANALES_PEDIDO, type PedidoVentaResumen } from "@/lib/pedidos-venta";
 import type { Abono, VApartadosPendientes, VStockBajo, VResumenCajaHoy } from "@/lib/types";
-import { calcularResumenFinancieroApartado } from "@/lib/apartados";
+import { agruparPrendasApartado, calcularResumenFinancieroApartado } from "@/lib/apartados";
 import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
 
@@ -57,11 +57,13 @@ function agruparApartadosInicio(
     return {
       grupoId,
       clienteNombre: prendas[0].cliente_nombre,
-      descripcion: prendas.map(prenda => {
+      descripcion: agruparPrendasApartado(prendas).map(grupo => {
+        const prenda = grupo.items[0];
         const nombre = prenda.referencia.toLowerCase().includes("libre") && prenda.observacion
           ? prenda.observacion
           : prenda.referencia;
-        return `${nombre} · T:${prenda.talla}`;
+        const cantidad = grupo.cantidad > 1 ? `${grupo.cantidad}× ` : "";
+        return `${cantidad}${nombre} · T:${prenda.talla}`;
       }).join(", "),
       canal: prendas[0].canal ?? "venta_tienda",
       enTienda: prendas.every(prenda => prenda.en_tienda),

@@ -117,6 +117,59 @@ test("crear un apartado en tienda registra la fila y descuenta el stock", async 
   expect(stockDespues).toBe(stockAntes - 1);
 });
 
+test("agrupa prendas equivalentes y conserva la gestion por unidad", async ({ page, request }) => {
+  const clienteNombre = `Agrupacion Test ${Date.now()}`;
+  const cliente = await crearCliente(request, clienteNombre);
+  const buso = await datosProducto(request, "DEMO-001", "M");
+  const grupoId = await crearGrupoBase(
+    request,
+    cliente.id,
+    buso.productoId,
+    buso.tallaId,
+    90000,
+  );
+  await restPatch(request, `apartados?id=eq.${grupoId}`, { observacion: "Pedido especial" });
+
+  await restPost(request, "apartados", [
+    {
+      grupo_id: grupoId,
+      cliente_id: cliente.id,
+      producto_id: buso.productoId,
+      talla_id: buso.tallaId,
+      precio: 90000,
+      estado: "pendiente",
+      en_tienda: false,
+      canal: "venta_tienda",
+    },
+    {
+      grupo_id: grupoId,
+      cliente_id: cliente.id,
+      producto_id: buso.productoId,
+      talla_id: buso.tallaId,
+      precio: 90000,
+      estado: "pendiente",
+      en_tienda: false,
+      canal: "venta_tienda",
+    },
+  ]);
+
+  await loginAsAdmin(page);
+  const enlaceApartado = page.getByRole("link", { name: new RegExp(clienteNombre) }).first();
+  await expect(enlaceApartado).toContainText("3× Buso Millonarios Azul · T:M");
+  await enlaceApartado.click();
+  await page.waitForURL(`**/apartados/${grupoId}`);
+
+  const referenciaAgrupada = page.getByText("Buso Millonarios Azul", { exact: true });
+  await expect(referenciaAgrupada).toHaveCount(1);
+  const tarjetaAgrupada = referenciaAgrupada.locator("xpath=ancestor::div[contains(@class,'border')][1]");
+  await expect(tarjetaAgrupada.getByText("3 unidades × $ 90.000", { exact: true })).toBeVisible();
+  await expect(tarjetaAgrupada.getByText("$ 270.000", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Gestionar 3 unidades" }).click();
+  await expect(page.getByText(/^Unidad \d$/)).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(3);
+});
+
 test("cancelar una prenda descuenta su precio del saldo y permite cerrar el grupo pagado", async ({ page, request }) => {
   const clienteNombre = `Cancelacion Test ${Date.now()}`;
   const cliente = await crearCliente(request, clienteNombre);
