@@ -39,6 +39,42 @@ export async function restGet(request: APIRequestContext, path: string) {
   return res.json();
 }
 
+/** POST contra PostgREST del laboratorio local y devuelve las filas creadas. */
+export async function restPost(
+  request: APIRequestContext,
+  path: string,
+  body: Record<string, unknown> | Record<string, unknown>[],
+) {
+  const res = await request.post(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Prefer: "return=representation",
+    },
+    data: body,
+  });
+  expect(res.ok(), `REST POST ${path} -> ${res.status()} ${await res.text()}`).toBeTruthy();
+  return res.json();
+}
+
+/** PATCH contra PostgREST del laboratorio local y devuelve las filas modificadas. */
+export async function restPatch(
+  request: APIRequestContext,
+  path: string,
+  body: Record<string, unknown>,
+) {
+  const res = await request.patch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Prefer: "return=representation",
+    },
+    data: body,
+  });
+  expect(res.ok(), `REST PATCH ${path} -> ${res.status()} ${await res.text()}`).toBeTruthy();
+  return res.json();
+}
+
 /**
  * Lee el stock en TIENDA de un producto+talla desde la vista v_stock_total.
  * Sirve para verificar que una venta descuenta inventario.
