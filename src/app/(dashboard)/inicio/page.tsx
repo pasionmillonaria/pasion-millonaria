@@ -11,7 +11,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { formatCurrency, formatMetodoPago, LABELS_CANAL } from "@/lib/utils";
 import { buildPedidosVenta, CANALES_PEDIDO, type PedidoVentaResumen } from "@/lib/pedidos-venta";
-import type { VApartadosPendientes, VStockBajo, VResumenCajaHoy } from "@/lib/types";
+import type { Abono, VApartadosPendientes, VStockBajo, VResumenCajaHoy } from "@/lib/types";
+import { calcularResumenFinancieroApartado } from "@/lib/apartados";
 import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
 
@@ -28,6 +29,48 @@ const accionesExtra = [
   { href: "/retiro", icon: UserMinus, color: "bg-gray-100", iconColor: "text-gray-600", label: "Retiro", desc: "Uso personal dueño" },
 ];
 
+interface ApartadoPendienteInicio {
+  grupoId: number;
+  clienteNombre: string;
+  descripcion: string;
+  canal: string;
+  enTienda: boolean;
+  totalSaldo: number;
+  fecha: string;
+}
+
+function agruparApartadosInicio(
+  items: VApartadosPendientes[],
+  abonos: Array<Pick<Abono, "grupo_id" | "monto">>,
+): ApartadoPendienteInicio[] {
+  const grupos = new Map<number, VApartadosPendientes[]>();
+  for (const item of items) {
+    const grupoId = item.grupo_id ?? item.id;
+    grupos.set(grupoId, [...(grupos.get(grupoId) ?? []), item]);
+  }
+
+  return Array.from(grupos, ([grupoId, prendas]) => {
+    const resumen = calcularResumenFinancieroApartado(
+      prendas,
+      abonos.filter(abono => abono.grupo_id === grupoId),
+    );
+    return {
+      grupoId,
+      clienteNombre: prendas[0].cliente_nombre,
+      descripcion: prendas.map(prenda => {
+        const nombre = prenda.referencia.toLowerCase().includes("libre") && prenda.observacion
+          ? prenda.observacion
+          : prenda.referencia;
+        return `${nombre} · T:${prenda.talla}`;
+      }).join(", "),
+      canal: prendas[0].canal ?? "venta_tienda",
+      enTienda: prendas.every(prenda => prenda.en_tienda),
+      totalSaldo: resumen.totalSaldo,
+      fecha: prendas[0].fecha,
+    };
+  }).sort((a, b) => Number(a.enTienda) - Number(b.enTienda) || a.fecha.localeCompare(b.fecha));
+}
+
 export default function InicioPage() {
   const supabase = createClient();
   const { profile, isAdmin, setProfile } = useProfile();
@@ -38,7 +81,7 @@ export default function InicioPage() {
     router.push("/");
   }
 
-  const [apartados, setApartados] = useState<VApartadosPendientes[]>([]);
+  const [apartados, setApartados] = useState<ApartadoPendienteInicio[]>([]);
   const [stockBajo, setStockBajo] = useState<VStockBajo[]>([]);
   const [resumenHoy, setResumenHoy] = useState<VResumenCajaHoy[]>([]);
   const [pedidosHoy, setPedidosHoy] = useState<PedidoVentaResumen[]>([]);
@@ -53,7 +96,7 @@ export default function InicioPage() {
     finDia.setDate(finDia.getDate() + 1);
 
     const [{ data: ap }, { data: sb }, { data: ventasData }, resumenResponse, { data: cajaFuerteData }] = await Promise.all([
-      supabase.from("v_apartados_pendientes").select("*").eq("estado", "pendiente").order("en_tienda", { ascending: true }).order("fecha", { ascending: true }).limit(20),
+      supabase.from("v_apartados_pendientes").select("*").eq("estado", "pendiente").order("en_tienda", { ascending: true }).order("fecha", { ascending: true }),
       supabase.from("v_stock_bajo").select("*").limit(20),
       supabase
         .from("movimientos")
@@ -68,7 +111,11 @@ export default function InicioPage() {
         : Promise.resolve({ data: [] as VResumenCajaHoy[] | null }),
       supabase.from("registros_caja").select("valor").eq("tipo", "caja_fuerte"),
     ]);
-    setApartados(ap ?? []);
+    const gruposIds = Array.from(new Set((ap ?? []).map(item => item.grupo_id ?? item.id)));
+    const { data: abonosApartados } = gruposIds.length > 0
+      ? await supabase.from("abonos").select("grupo_id,monto").in("grupo_id", gruposIds)
+      : { data: [] };
+    setApartados(agruparApartadosInicio(ap ?? [], abonosApartados ?? []).slice(0, 20));
     setStockBajo(sb ?? []);
     setPedidosHoy(buildPedidosVenta((ventasData ?? []) as any[]));
     setResumenHoy(resumenResponse.data ?? []);
@@ -324,14 +371,12 @@ export default function InicioPage() {
             ) : (
               <div className="space-y-2">
                 {apartados.map(a => (
-                  <Link key={a.id} href={`/apartados/${a.grupo_id ?? a.id}`}
+                  <Link key={a.grupoId} href={`/apartados/${a.grupoId}`}
                     className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 transition-all">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate">{a.cliente_nombre}</p>
+                      <p className="font-semibold text-sm truncate">{a.clienteNombre}</p>
                       <p className="text-xs text-gray-500 truncate">
-                        {(a.referencia.toLowerCase().includes("libre") && a.observacion)
-                          ? a.observacion
-                          : a.referencia} · T:{a.talla}
+                        {a.descripcion}
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -340,14 +385,14 @@ export default function InicioPage() {
                           {a.canal === "domicilio" ? "Domicilio" : "Envío"}
                         </span>
                       )}
-                      {!a.en_tienda && (
+                      {!a.enTienda && (
                         <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-lg">
                           Por llegar
                         </span>
                       )}
                     </div>
                     {isAdmin && (
-                      <p className="text-sm font-bold text-red-600 shrink-0">{formatCurrency(a.saldo)}</p>
+                      <p className="text-sm font-bold text-red-600 shrink-0">{formatCurrency(a.totalSaldo)}</p>
                     )}
                     <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
                   </Link>

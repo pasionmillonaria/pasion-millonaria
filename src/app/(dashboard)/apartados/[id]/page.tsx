@@ -10,6 +10,7 @@ import SelectorTalla from "@/components/SelectorTalla";
 import ListaProductos from "@/components/ListaProductos";
 import type { Abono, MetodoPago, SistemaTalla, CanalMovimiento } from "@/lib/types";
 import { useProfile } from "@/lib/context/ProfileContext";
+import { calcularEstadoGrupoApartado, calcularResumenFinancieroApartado } from "@/lib/apartados";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
@@ -51,6 +52,7 @@ interface GrupoDetalle {
   totalPrecio: number;
   totalAbonado: number;
   totalSaldo: number;
+  saldoAFavor: number;
   estadoGrupo: string;
   canal: CanalMovimiento;
 }
@@ -110,6 +112,7 @@ export default function ApartadoDetallePage() {
   const [editTallas, setEditTallas] = useState<TallaStock[]>([]);
   const [editTallaId, setEditTallaId] = useState<number | null>(null);
   const [editEnTienda, setEditEnTienda] = useState(true);
+  const [editPrecio, setEditPrecio] = useState("");
   const [loadingEdit, setLoadingEdit] = useState(false);
 
   async function cargarDatos() {
@@ -128,7 +131,7 @@ export default function ApartadoDetallePage() {
     const apartadoIds = items.map(a => a.id);
 
     const [{ data: abonos }, { data: rawAps }] = await Promise.all([
-      supabase.from("abonos").select("*").in("apartado_id", apartadoIds).order("fecha", { ascending: false }),
+      supabase.from("abonos").select("*").eq("grupo_id", grupoId).order("fecha", { ascending: false }),
       supabase.from("apartados").select("id, producto_id, talla_id, en_tienda, cliente_id").in("id", apartadoIds),
     ]);
 
@@ -150,19 +153,16 @@ export default function ApartadoDetallePage() {
       };
     });
 
-    const totalPrecio = itemsDetalle.reduce((s, i) => s + i.precio, 0);
-    const totalAbonado = itemsDetalle.reduce((s, i) => s + i.total_abonado, 0);
-    const totalSaldo = itemsDetalle.reduce((s, i) => s + i.saldo, 0);
-    const estadoGrupo = itemsDetalle.some(i => i.estado === "pendiente")
-      ? "pendiente"
-      : itemsDetalle.every(i => i.estado === "entregado") ? "entregado" : "cancelado";
+    const { totalPrecio, totalAbonado, totalSaldo, saldoAFavor } =
+      calcularResumenFinancieroApartado(itemsDetalle, abonos ?? []);
+    const estadoGrupo = calcularEstadoGrupoApartado(itemsDetalle);
 
     setGrupo({
       grupoId, clienteId: rawAps?.[0]?.cliente_id ?? 0,
       clienteNombre: items[0].cliente_nombre,
       clienteTelefono: items[0].cliente_telefono, fecha: items[0].fecha,
       items: itemsDetalle, abonos: abonos ?? [],
-      totalPrecio, totalAbonado, totalSaldo, estadoGrupo,
+      totalPrecio, totalAbonado, totalSaldo, saldoAFavor, estadoGrupo,
       canal: items[0].canal as CanalMovimiento ?? "venta_tienda",
     });
     setEditCanal(items[0].canal as CanalMovimiento ?? "venta_tienda");
@@ -175,6 +175,7 @@ export default function ApartadoDetallePage() {
     setEditItem(item);
     setEditTallaId(item.talla_id);
     setEditEnTienda(item.en_tienda);
+    setEditPrecio(String(item.precio));
     setLoadingEdit(false);
     setEditTallas([]);
     setModalEdit(true);
@@ -201,6 +202,11 @@ export default function ApartadoDetallePage() {
 
   async function guardarEdicionPrenda() {
     if (loadingEdit || !editItem || !editTallaId) return;
+    const precio = Number(editPrecio);
+    if (!Number.isFinite(precio) || precio <= 0) {
+      toast.error("El precio debe ser mayor a 0");
+      return;
+    }
     setLoadingEdit(true);
 
     const cambioTalla = editTallaId !== editItem.talla_id;
@@ -242,7 +248,7 @@ export default function ApartadoDetallePage() {
 
     // Actualizar el apartado
     const { error } = await supabase.from("apartados")
-      .update({ talla_id: editTallaId, en_tienda: editEnTienda })
+      .update({ talla_id: editTallaId, en_tienda: editEnTienda, precio })
       .eq("id", editItem.id);
 
     if (error) { toast.error("Error: " + error.message); setLoadingEdit(false); return; }
@@ -678,6 +684,9 @@ export default function ApartadoDetallePage() {
                 </div>
                 <div className="text-right ml-3">
                   <p className="font-semibold text-sm">{formatCurrency(item.precio)}</p>
+                  {item.estado === "cancelado" && (
+                    <p className="text-[10px] text-gray-400">No suma al total</p>
+                  )}
                 </div>
               </div>
 
@@ -743,6 +752,12 @@ export default function ApartadoDetallePage() {
                 {formatCurrency(grupo.totalSaldo)}
               </span>
             </div>
+            {grupo.saldoAFavor > 0 && (
+              <div className="flex justify-between font-semibold text-orange-600">
+                <span>Saldo a favor del cliente</span>
+                <span>{formatCurrency(grupo.saldoAFavor)}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -881,6 +896,16 @@ export default function ApartadoDetallePage() {
             </div>
 
             <div>
+              <label className="label" htmlFor="edit-precio-apartado">Precio unitario</label>
+              <InputDinero
+                id="edit-precio-apartado"
+                value={editPrecio}
+                onChange={setEditPrecio}
+                className="input"
+              />
+            </div>
+
+            <div>
               <p className="label mb-2">Ubicación de la prenda</p>
               <div className="flex gap-2">
                 <button onClick={() => setEditEnTienda(true)}
@@ -902,7 +927,9 @@ export default function ApartadoDetallePage() {
             </div>
 
             <Button className="w-full" onClick={guardarEdicionPrenda} loading={loadingEdit}
-              disabled={editTallaId === editItem.talla_id && editEnTienda === editItem.en_tienda}>
+              disabled={editTallaId === editItem.talla_id
+                && editEnTienda === editItem.en_tienda
+                && Number(editPrecio) === Number(editItem.precio)}>
               Guardar cambios
             </Button>
           </div>

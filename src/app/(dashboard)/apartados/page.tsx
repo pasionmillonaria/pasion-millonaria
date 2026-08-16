@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Bookmark, Plus, ChevronRight, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { VApartadosPendientes } from "@/lib/types";
+import type { Abono, VApartadosPendientes } from "@/lib/types";
+import { calcularEstadoGrupoApartado, calcularResumenFinancieroApartado } from "@/lib/apartados";
 import Spinner from "@/components/ui/Spinner";
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
@@ -24,7 +25,10 @@ interface GrupoApartado {
   canal: string;
 }
 
-function agrupar(apartados: VApartadosPendientes[]): GrupoApartado[] {
+function agrupar(
+  apartados: VApartadosPendientes[],
+  abonos: Array<Pick<Abono, "grupo_id" | "monto">>,
+): GrupoApartado[] {
   const mapa = new Map<number, GrupoApartado>();
   for (const a of apartados) {
     const gid = a.grupo_id ?? a.id;
@@ -44,20 +48,29 @@ function agrupar(apartados: VApartadosPendientes[]): GrupoApartado[] {
     }
     const g = mapa.get(gid)!;
     g.items.push(a);
-    g.totalPrecio += a.precio;
-    g.totalAbonado += a.total_abonado;
-    g.totalSaldo += a.saldo;
-    // El estado del grupo: si alguno está pendiente → pendiente
-    if (a.estado === "pendiente") g.estado = "pendiente";
-    else if (a.estado === "entregado" && g.estado !== "pendiente") g.estado = "entregado";
   }
-  return Array.from(mapa.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return Array.from(mapa.values())
+    .map(g => {
+      const resumen = calcularResumenFinancieroApartado(
+        g.items,
+        abonos.filter(abono => abono.grupo_id === g.grupoId),
+      );
+      return {
+        ...g,
+        estado: calcularEstadoGrupoApartado(g.items),
+        totalPrecio: resumen.totalPrecio,
+        totalAbonado: resumen.totalAbonado,
+        totalSaldo: resumen.totalSaldo,
+      };
+    })
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
 export default function ApartadosPage() {
   const supabase = createClient();
   const { isAdmin } = useProfile();
   const [apartados, setApartados] = useState<VApartadosPendientes[]>([]);
+  const [abonos, setAbonos] = useState<Array<Pick<Abono, "grupo_id" | "monto">>>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<"pendiente" | "entregado" | "cancelado">("pendiente");
@@ -65,17 +78,18 @@ export default function ApartadosPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data } = await supabase
-        .from("v_apartados_pendientes")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const [{ data }, { data: abonosData }] = await Promise.all([
+        supabase.from("v_apartados_pendientes").select("*").order("fecha", { ascending: false }),
+        supabase.from("abonos").select("grupo_id,monto"),
+      ]);
       setApartados(data ?? []);
+      setAbonos(abonosData ?? []);
       setLoading(false);
     }
     load();
   }, []);
 
-  const grupos = agrupar(apartados);
+  const grupos = agrupar(apartados, abonos);
 
   const filtrados = grupos.filter(g => {
     if (g.estado !== filtroEstado) return false;

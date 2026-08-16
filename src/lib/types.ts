@@ -303,6 +303,7 @@ export interface Database {
         Row: {
           id: number;
           apartado_id: number;
+          grupo_id: number;
           monto: number;
           metodo_pago: MetodoPago;
           fecha: string;
@@ -310,12 +311,14 @@ export interface Database {
         };
         Insert: {
           apartado_id: number;
+          grupo_id: number;
           monto: number;
           metodo_pago: MetodoPago;
           registrado_por?: string | null;
         };
         Update: {
           apartado_id?: number;
+          grupo_id?: number;
           monto?: number;
           metodo_pago?: MetodoPago;
           registrado_por?: string | null;

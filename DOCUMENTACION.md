@@ -281,7 +281,12 @@ Cada tarjeta muestra:
 - Precio total
 - Total abonado
 - **Saldo pendiente** (en rojo si debe, verde si está al día)
+- Saldo a favor del cliente cuando los abonos superan el valor de las prendas vigentes
 - Historial completo de abonos (monto, método, fecha)
+
+Las prendas canceladas permanecen visibles como historial, pero su precio deja de
+sumar al total y al saldo del pedido. Los abonos se contabilizan una sola vez por
+`grupo_id`, sin depender de la prenda en la que se registraron.
 
 ### Acciones (solo Admin, solo si el apartado está pendiente)
 
@@ -290,7 +295,7 @@ Cada tarjeta muestra:
 | **Registrar abono** | Abre modal para registrar pago parcial o total. Si hay caja abierta, el abono se registra también como ingreso en caja. |
 | **Agregar prenda** | Añadir más artículos al pedido existente. Permite seleccionar si viene del inventario o si hay que pedirlo al proveedor. |
 | **Marcar recibida** | Para prendas "Pendiente de llegada": marca que llegaron del proveedor. No mueve inventario (la prenda va directo al cliente). |
-| **Editar prenda** | Cambiar talla o estado En tienda/Pendiente de cada prenda. Ajusta el inventario si cambia el estado. |
+| **Editar prenda** | Cambiar precio, talla o estado En tienda/Pendiente de cada prenda. Recalcula el saldo y ajusta el inventario si cambia el estado. |
 | **Quitar prenda** | Elimina una prenda del pedido. Si estaba en inventario, la devuelve. Solo disponible si hay más de 1 prenda. |
 | **Marcar entregado** | Cierra el apartado. Solo posible cuando saldo = $0. |
 | **Cancelar apartado** | Cancela todas las prendas pendientes. Devuelve al inventario las que estaban en tienda. |
