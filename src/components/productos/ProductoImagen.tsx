@@ -11,6 +11,9 @@ interface ProductoImagenProps {
   variante?: VarianteImagenProducto;
   className?: string;
   ampliable?: boolean;
+  srcDirecta?: string | null;
+  textoAlternativo?: string;
+  mostrarIndicacion?: boolean;
 }
 
 export default function ProductoImagen({
@@ -19,18 +22,31 @@ export default function ProductoImagen({
   variante = "thumb",
   className,
   ampliable = false,
+  srcDirecta,
+  textoAlternativo,
+  mostrarIndicacion = false,
 }: ProductoImagenProps) {
   const [error, setError] = useState(false);
   const [abierta, setAbierta] = useState(false);
-  const src = urlImagenProducto(imagenPath, variante);
-  const detailSrc = urlImagenProducto(imagenPath, "detail");
+  const src = srcDirecta ?? urlImagenProducto(imagenPath, variante);
+  const detailSrc = srcDirecta ?? urlImagenProducto(imagenPath, "detail");
+  const alt = textoAlternativo ?? referencia;
 
   useEffect(() => setError(false), [src]);
+
+  useEffect(() => {
+    if (!abierta) return;
+    function cerrarConEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setAbierta(false);
+    }
+    window.addEventListener("keydown", cerrarConEscape);
+    return () => window.removeEventListener("keydown", cerrarConEscape);
+  }, [abierta]);
 
   const contenido = src && !error ? (
     <img
       src={src}
-      alt={referencia}
+      alt={alt}
       loading="lazy"
       decoding="async"
       onError={() => setError(true)}
@@ -48,17 +64,28 @@ export default function ProductoImagen({
         <button
           type="button"
           onClick={event => { event.stopPropagation(); setAbierta(true); }}
-          className={cn("overflow-hidden rounded-xl bg-gray-100", className)}
+          className={cn("group relative overflow-hidden rounded-xl bg-gray-100", className)}
           aria-label={`Ampliar foto de ${referencia}`}
         >
           {contenido}
+          {mostrarIndicacion && (
+            <span className="absolute bottom-2 right-2 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-semibold text-white shadow">
+              Toca para ampliar
+            </span>
+          )}
         </button>
       ) : (
         <div className={cn("overflow-hidden rounded-xl bg-gray-100", className)}>{contenido}</div>
       )}
 
       {abierta && detailSrc && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-label={`Foto de ${referencia}`}>
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-2 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Foto ampliada de ${referencia}`}
+          onClick={() => setAbierta(false)}
+        >
           <button
             type="button"
             onClick={() => setAbierta(false)}
@@ -67,7 +94,12 @@ export default function ProductoImagen({
           >
             <X className="h-6 w-6" />
           </button>
-          <img src={detailSrc} alt={referencia} className="max-h-[85vh] max-w-full rounded-2xl bg-gray-100 object-contain shadow-2xl" />
+          <img
+            src={detailSrc}
+            alt={alt}
+            onClick={event => event.stopPropagation()}
+            className="max-h-[92dvh] max-w-[96vw] rounded-2xl bg-gray-100 object-contain shadow-2xl"
+          />
         </div>
       )}
     </>

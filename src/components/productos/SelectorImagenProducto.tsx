@@ -65,11 +65,25 @@ export default function SelectorImagenProducto({
         {archivo && <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">{Math.ceil(archivo.size / 1024)} KB</span>}
       </div>
 
-      <div className="mx-auto mb-3 aspect-square w-full max-w-[18rem] overflow-hidden rounded-2xl bg-gray-100">
+      <div className="mx-auto mb-3 aspect-square w-full max-w-[18rem] rounded-2xl bg-gray-100">
         {preview ? (
-          <img src={preview} alt={`Vista previa de ${referencia || "producto"}`} className="h-full w-full object-contain" />
+          <ProductoImagen
+            srcDirecta={preview}
+            referencia={referencia || "producto"}
+            textoAlternativo={`Vista previa de ${referencia || "producto"}`}
+            ampliable
+            mostrarIndicacion
+            className="h-full w-full"
+          />
         ) : (
-          <ProductoImagen imagenPath={imagenPath} referencia={referencia || "Producto"} variante="detail" ampliable className="h-full w-full" />
+          <ProductoImagen
+            imagenPath={imagenPath}
+            referencia={referencia || "Producto"}
+            variante="detail"
+            ampliable
+            mostrarIndicacion={!!imagenPath}
+            className="h-full w-full"
+          />
         )}
       </div>
 

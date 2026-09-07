@@ -61,6 +61,9 @@ test.describe.serial("imagenes optimizadas de productos", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("link", { name: "Productos", exact: true }).click();
     await expect(page.getByRole("img", { name: "Buso Millonarios Azul" })).toBeVisible();
+    await page.getByRole("button", { name: "Ampliar foto de Buso Millonarios Azul" }).click();
+    await expect(page.getByRole("dialog", { name: "Foto ampliada de Buso Millonarios Azul" })).toBeVisible();
+    await page.getByRole("button", { name: "Cerrar foto" }).click();
     await page.getByRole("link", { name: "Inventario", exact: true }).click();
     await expect(page.getByRole("img", { name: "Buso Millonarios Azul" })).toBeVisible();
 
@@ -96,5 +99,7 @@ test.describe.serial("imagenes optimizadas de productos", () => {
     });
     await expect(page.getByTestId("selector-imagen-producto").getByText(/KB$/)).toBeVisible();
     await expect(page.getByAltText("Vista previa de producto", { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "Ampliar foto de producto" }).click();
+    await expect(page.getByRole("dialog", { name: "Foto ampliada de producto" })).toBeVisible();
   });
 });
