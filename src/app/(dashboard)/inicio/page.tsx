@@ -78,7 +78,12 @@ export default function InicioPage() {
   const { profile, isAdmin, setProfile } = useProfile();
   const router = useRouter();
 
-  function handleSalir() {
+  async function handleSalir() {
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch {
+      // La sesion visual debe cerrarse aunque falle la limpieza de cookie.
+    }
     setProfile(null);
     router.push("/");
   }

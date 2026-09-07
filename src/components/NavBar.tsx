@@ -31,7 +31,12 @@ export default function NavBar() {
 
   const items = isAdmin ? [...navBase, ...navAdmin] : [...navBase, ...navEmpleadoExtra];
 
-  function handleSalir() {
+  async function handleSalir() {
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch {
+      // La sesion visual debe cerrarse aunque falle la limpieza de cookie.
+    }
     setProfile(null);
     router.push("/");
   }

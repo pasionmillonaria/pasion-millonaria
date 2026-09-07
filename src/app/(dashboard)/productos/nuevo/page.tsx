@@ -8,6 +8,7 @@ import type { Linea, Categoria, SistemaTalla } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import InputDinero from "@/components/ui/InputDinero";
 import GestionarCategoriasModal from "@/components/GestionarCategoriasModal";
+import SelectorImagenProducto from "@/components/productos/SelectorImagenProducto";
 import toast from "react-hot-toast";
 
 const SISTEMAS: { value: SistemaTalla; label: string }[] = [
@@ -40,6 +41,9 @@ export default function NuevoProductoPage() {
   const [precioBase, setPrecioBase] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmado, setConfirmado] = useState(false);
+  const [archivoImagen, setArchivoImagen] = useState<File | null>(null);
+  const [imagenNoGuardada, setImagenNoGuardada] = useState(false);
+  const [productoCreadoId, setProductoCreadoId] = useState<number | null>(null);
 
   // Nueva categoría inline
   const [nuevaCatVisible, setNuevaCatVisible] = useState(false);
@@ -89,7 +93,7 @@ export default function NuevoProductoPage() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.from("productos").insert({
+    const { data: creado, error } = await supabase.from("productos").insert({
       codigo: generarCodigo(referencia),
       referencia: referencia.trim(),
       categoria_id: categoriaId,
@@ -97,14 +101,33 @@ export default function NuevoProductoPage() {
       sistema_talla: sistemaTalla,
       precio_base: parseFloat(precioBase),
       activo: true,
-    });
+    }).select("id").single();
 
     if (error) {
       toast.error("Error: " + error.message);
       setLoading(false);
       return;
     }
-    toast.success("Producto creado");
+
+    let fotoGuardada = true;
+    if (archivoImagen && creado) {
+      try {
+        const body = new FormData();
+        body.append("imagen", archivoImagen);
+        const response = await fetch(`/api/productos/${creado.id}/imagen`, { method: "POST", body });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? "No se pudo subir la foto");
+        }
+      } catch (uploadError) {
+        fotoGuardada = false;
+        toast.error(uploadError instanceof Error ? uploadError.message : "Producto creado, pero la foto no se pudo guardar");
+      }
+    }
+
+    setImagenNoGuardada(!fotoGuardada);
+    setProductoCreadoId(creado.id);
+    toast.success(fotoGuardada ? "Producto creado" : "Producto creado sin foto");
     setConfirmado(true);
     setLoading(false);
   }
@@ -117,10 +140,20 @@ export default function NuevoProductoPage() {
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Producto creado!</h2>
         <p className="text-gray-500 mb-8">{referencia}</p>
+        {imagenNoGuardada && (
+          <div className="mb-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p>El producto quedó guardado sin foto.</p>
+            {productoCreadoId && (
+              <button type="button" onClick={() => router.push(`/productos/${productoCreadoId}`)} className="mt-2 font-bold underline">
+                Reintentar desde Editar producto
+              </button>
+            )}
+          </div>
+        )}
         <div className="space-y-3">
           <Button className="w-full" onClick={() => {
             setReferencia(""); setCategoriaId(null); setPrecioBase("");
-            setLineaId(null); setConfirmado(false);
+            setLineaId(null); setArchivoImagen(null); setImagenNoGuardada(false); setProductoCreadoId(null); setConfirmado(false);
           }}>Crear otro</Button>
           <Button variant="secondary" className="w-full" onClick={() => router.push("/productos")}>
             Ver todos
@@ -138,6 +171,15 @@ export default function NuevoProductoPage() {
         </button>
         <Package className="w-6 h-6 text-brand-blue" />
         <h1 className="text-xl font-bold text-gray-900">Nuevo Producto</h1>
+      </div>
+
+      <div className="mb-4">
+        <SelectorImagenProducto
+          referencia={referencia}
+          archivo={archivoImagen}
+          onArchivoChange={setArchivoImagen}
+          disabled={loading}
+        />
       </div>
 
       <div className="card space-y-4">

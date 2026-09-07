@@ -90,7 +90,17 @@ CREATE TABLE productos (
   categoria_id  bigint       NOT NULL REFERENCES categorias(id),   -- categoría universal
   sistema_talla varchar(20)  NOT NULL CHECK (sistema_talla IN ('ropa_adulto','ropa_nino','calzado','unica')),
   precio_base   numeric(12,2) NOT NULL CHECK (precio_base >= 0),
+  imagen_path   text,
   activo        boolean       NOT NULL DEFAULT true
+);
+
+CREATE TABLE producto_imagenes_huerfanas (
+  id            bigserial PRIMARY KEY,
+  producto_id   bigint REFERENCES productos(id) ON DELETE SET NULL,
+  path          text NOT NULL UNIQUE,
+  motivo        text NOT NULL,
+  creado_en     timestamptz NOT NULL DEFAULT now(),
+  limpiado_en   timestamptz
 );
 
 CREATE TABLE stock (

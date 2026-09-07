@@ -16,24 +16,18 @@ El PIN está en la variable de entorno `ADMIN_PIN` (`src/app/api/verify-pin/rout
 
 ## 2. Fotos de productos (Supabase Storage)
 
-**Opción recomendada: Supabase Storage**
+Implementado en la rama de imágenes de productos:
 
-1. En el dashboard de Supabase, crear un bucket llamado `productos` (público)
-2. Subir las fotos con el nombre `{codigo_producto}.webp` (ej: `CAM-001.webp`)
-3. En el código, construir la URL así:
-   ```ts
-   supabase.storage.from("productos").getPublicUrl(producto.codigo + ".webp")
-   ```
-4. Las imágenes aparecerían en inventario, venta, etc.
+- Una foto principal opcional por producto.
+- La app prepara JPG, PNG, WebP, HEIC/HEIF en el celular y el servidor guarda solo
+  `thumb.webp` (256×256, máximo 60 KB) y `detail.webp` (800×800, máximo 220 KB).
+- Se muestran miniaturas en Inventario y Productos; no se agregaron todavía a Venta ni Apartados.
+- Las escrituras usan un endpoint de servidor protegido por sesión administrativa y se pueden
+  apagar con `PRODUCT_IMAGE_UPLOADS_ENABLED`.
+- Importador masivo con `dry-run` predeterminado y reporte CSV.
 
-**Convenciones para las fotos:**
-- Nombre del archivo = código del producto (campo `codigo` en la tabla `productos`)
-- Formato: `.webp`
-- Tamaño ideal: 800×800 px, fondo blanco o neutro
-
-**Pendiente de implementar en el código:**
-- Mostrar foto en la lista de productos (inventario, venta)
-- Agregar botón "Subir foto" en la página de detalle de producto (solo admin)
+La guía operativa completa está en `docs/guia-imagenes-productos.md`. Antes de llevarlo a
+producción todavía se debe aprobar Docker local, staging y el Preview de Vercel.
 
 ## Reportes (rediseño orientado a decisiones — ver deep research §8.5)
 - [ ] BUG: KPIs calculan desde cierres de caja e ignoran ventas de /venta → migrar a `movimientos`

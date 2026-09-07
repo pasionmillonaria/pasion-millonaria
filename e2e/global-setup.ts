@@ -15,6 +15,16 @@ import { execSync } from "node:child_process";
  * reiniciar (problema transitorio): por eso reintentamos un par de veces.
  */
 export default function globalSetup() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (url !== "http://127.0.0.1:55321") {
+    throw new Error(
+      `[playwright] BLOQUEADO: NEXT_PUBLIC_SUPABASE_URL debe ser exactamente http://127.0.0.1:55321. Valor actual: ${url ?? "no definido"}`,
+    );
+  }
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("[playwright] BLOQUEADO: falta SUPABASE_SERVICE_ROLE_KEY del laboratorio local");
+  }
+
   const intentos = 3;
   for (let i = 1; i <= intentos; i++) {
     try {
