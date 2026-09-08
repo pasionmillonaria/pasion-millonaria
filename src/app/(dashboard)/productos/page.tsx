@@ -9,6 +9,7 @@ import { useProfile } from "@/lib/context/ProfileContext";
 import type { Producto, Categoria, Linea } from "@/lib/types";
 import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
+import ProductoImagen from "@/components/productos/ProductoImagen";
 import toast from "react-hot-toast";
 
 interface ProductoConInfo extends Producto {
@@ -31,6 +32,7 @@ export default function ProductosPage() {
   const [productos, setProductos] = useState<ProductoConInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState("");
+  const [limiteMobile, setLimiteMobile] = useState(30);
 
   async function cargarProductos() {
     setLoading(true);
@@ -70,6 +72,8 @@ export default function ProductosPage() {
     );
   });
 
+  useEffect(() => setLimiteMobile(30), [busqueda]);
+
   if (!isAdmin) {
     return (
       <div className="max-w-lg mx-auto px-4 pt-20 text-center">
@@ -105,8 +109,14 @@ export default function ProductosPage() {
         <Spinner className="py-16" />
       ) : (
         <div className="space-y-2">
-          {filtrados.map(p => (
-            <div key={p.id} className="card flex items-center gap-3">
+          {filtrados.map((p, index) => (
+            <div key={p.id} className={`card items-center gap-3 ${index >= limiteMobile ? "hidden md:flex" : "flex"}`}>
+              <ProductoImagen
+                imagenPath={p.imagen_path}
+                referencia={p.referencia}
+                ampliable
+                className="h-16 w-16 shrink-0 md:h-12 md:w-12"
+              />
               <div className="flex-1 min-w-0" onClick={() => router.push(`/productos/${p.id}`)}>
                 <div className="flex items-center gap-2">
                   <p className="font-bold text-gray-900 truncate">{p.referencia}</p>
@@ -128,6 +138,15 @@ export default function ProductosPage() {
               </div>
             </div>
           ))}
+          {filtrados.length > limiteMobile && (
+            <button
+              type="button"
+              onClick={() => setLimiteMobile(actual => actual + 30)}
+              className="md:hidden w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-brand-blue"
+            >
+              Mostrar más ({filtrados.length - limiteMobile})
+            </button>
+          )}
         </div>
       )}
       <div className="h-4" />

@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 import InputDinero from "@/components/ui/InputDinero";
 import GestionarCategoriasModal from "@/components/GestionarCategoriasModal";
+import SelectorImagenProducto from "@/components/productos/SelectorImagenProducto";
 import toast from "react-hot-toast";
 
 const SISTEMAS: { value: SistemaTalla; label: string }[] = [
@@ -35,6 +36,9 @@ export default function EditarProductoPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
+  const [archivoImagen, setArchivoImagen] = useState<File | null>(null);
+  const [savingImagen, setSavingImagen] = useState(false);
+  const [eliminandoImagen, setEliminandoImagen] = useState(false);
 
   const [referencia,   setReferencia]   = useState("");
   const [precioBase,   setPrecioBase]   = useState("");
@@ -146,6 +150,41 @@ export default function EditarProductoPage() {
     router.push("/productos");
   }
 
+  async function guardarImagen() {
+    if (!producto || !archivoImagen) return;
+    setSavingImagen(true);
+    try {
+      const body = new FormData();
+      body.append("imagen", archivoImagen);
+      const response = await fetch(`/api/productos/${producto.id}/imagen`, { method: "POST", body });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "No se pudo guardar la foto");
+      setProducto(prev => prev ? { ...prev, imagen_path: payload.imagenPath } : prev);
+      setArchivoImagen(null);
+      toast.success("Foto actualizada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar la foto");
+    } finally {
+      setSavingImagen(false);
+    }
+  }
+
+  async function eliminarImagen() {
+    if (!producto?.imagen_path) return;
+    setEliminandoImagen(true);
+    try {
+      const response = await fetch(`/api/productos/${producto.id}/imagen`, { method: "DELETE" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "No se pudo quitar la foto");
+      setProducto(prev => prev ? { ...prev, imagen_path: null } : prev);
+      toast.success(payload.cleanupPending ? "Foto retirada; limpieza pendiente" : "Foto eliminada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo quitar la foto");
+    } finally {
+      setEliminandoImagen(false);
+    }
+  }
+
   // ── Guardar ajuste de stock ──────────────────────────────────
   async function guardarAjusteStock() {
     if (!producto) return;
@@ -223,6 +262,15 @@ export default function EditarProductoPage() {
       return;
     }
 
+    if (producto.imagen_path) {
+      const response = await fetch(`/api/productos/${producto.id}/imagen`, { method: "DELETE" });
+      if (!response.ok) {
+        toast.error("No se pudo limpiar la foto. El producto no fue eliminado.");
+        setDeleting(false);
+        return;
+      }
+    }
+
     // Sin movimientos → eliminar stock y producto
     await supabase.from("stock").delete().eq("producto_id", producto.id);
     const { error } = await supabase.from("productos").delete().eq("id", producto.id);
@@ -251,6 +299,23 @@ export default function EditarProductoPage() {
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold text-gray-900">Editar Producto</h1>
+      </div>
+
+      <div className="mb-4">
+        <SelectorImagenProducto
+          referencia={producto.referencia}
+          imagenPath={producto.imagen_path}
+          archivo={archivoImagen}
+          onArchivoChange={setArchivoImagen}
+          onEliminarActual={eliminarImagen}
+          eliminando={eliminandoImagen}
+          disabled={savingImagen || deleting}
+        />
+        {archivoImagen && (
+          <Button className="mt-3 w-full" size="lg" onClick={guardarImagen} loading={savingImagen}>
+            Guardar foto
+          </Button>
+        )}
       </div>
 
       {/* ── Formulario principal ── */}

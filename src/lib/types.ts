@@ -142,6 +142,7 @@ export interface Database {
           categoria_id: number;
           sistema_talla: SistemaTalla;
           precio_base: number;
+          imagen_path: string | null;
           activo: boolean;
         };
         Insert: {
@@ -151,6 +152,7 @@ export interface Database {
           categoria_id: number;
           sistema_talla: SistemaTalla;
           precio_base: number;
+          imagen_path?: string | null;
           activo?: boolean;
         };
         Update: {
@@ -160,7 +162,33 @@ export interface Database {
           categoria_id?: number;
           sistema_talla?: SistemaTalla;
           precio_base?: number;
+          imagen_path?: string | null;
           activo?: boolean;
+        };
+        Relationships: [];
+      };
+      producto_imagenes_huerfanas: {
+        Row: {
+          id: number;
+          producto_id: number | null;
+          path: string;
+          motivo: string;
+          creado_en: string;
+          limpiado_en: string | null;
+        };
+        Insert: {
+          producto_id?: number | null;
+          path: string;
+          motivo: string;
+          creado_en?: string;
+          limpiado_en?: string | null;
+        };
+        Update: {
+          producto_id?: number | null;
+          path?: string;
+          motivo?: string;
+          creado_en?: string;
+          limpiado_en?: string | null;
         };
         Relationships: [];
       };

@@ -66,11 +66,11 @@ export default defineConfig({
   ],
 
   // Arranca la app automaticamente antes de los tests.
-  // Si ya tienes `npm run dev` corriendo, reutiliza ese servidor.
+  // No reutiliza un servidor previo: podría haberse iniciado con variables de otro entorno.
   webServer: {
     command: "npm run dev",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

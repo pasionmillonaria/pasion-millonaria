@@ -111,14 +111,16 @@ En **desktop**, los tres filtros son dropdowns en fila.
 
 ### Tabla de inventario (desktop)
 
-Formato tipo Excel: cada producto es una fila, cada talla es una columna. Las celdas muestran `tienda / bodega` con colores:
+Formato tipo Excel: cada producto es una fila con miniatura de 48×48, cada talla es una columna. Las celdas muestran `tienda / bodega` con colores:
 - 🟢 Verde: stock > 2
 - 🟡 Amarillo: stock 1–2
 - 🔴 Rojo: sin stock (0)
 
 ### Vista móvil
 
-Tarjetas por producto con rejilla de tallas expandible.
+Tarjetas compactas con miniatura de 72×72, referencia, categoría, precio y existencias.
+La rejilla de tallas y ubicación continúa siendo expandible. Tocar la foto abre el detalle.
+Se muestran inicialmente 30 productos y el botón "Mostrar más" carga el siguiente grupo.
 
 ---
 
@@ -451,9 +453,10 @@ Botón "Descargar reporte" → genera imagen PNG con toda la información del d�
 Lista todos los productos del catálogo.
 
 - Búsqueda por referencia o categoría
-- Muestra: referencia, línea, categoría, sistema de talla, estado activo/inactivo
+- Muestra: miniatura, referencia, línea, categoría, sistema de talla, estado activo/inactivo
 - Toggle rápido para activar/desactivar sin entrar al detalle
 - Clic para ir al detalle y editar
+- En móvil usa miniaturas de 64×64 y carga inicialmente 30 productos
 
 ---
 
@@ -465,6 +468,7 @@ Lista todos los productos del catálogo.
 Editar un producto existente.
 
 Campos editables:
+- Foto principal opcional (tomar, elegir, reemplazar o quitar)
 - Referencia / nombre
 - Línea
 - Categoría (con opción de crear una nueva inline)
@@ -482,7 +486,8 @@ Campos editables:
 
 Crea un producto nuevo en el catálogo.
 
-Campos requeridos: referencia, línea, categoría, sistema de talla, precio base.
+Campos requeridos: referencia, línea, categoría, sistema de talla, precio base. La foto es opcional,
+se optimiza en el dispositivo y si falla no impide crear el producto.
 
 > Crear el producto **no agrega stock**. Después de crearlo hay que ir a **Entrada** para registrar las unidades que llegaron.
 

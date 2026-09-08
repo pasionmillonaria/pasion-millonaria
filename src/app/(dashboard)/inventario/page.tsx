@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/utils";
 import Spinner from "@/components/ui/Spinner";
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
+import ProductoImagen from "@/components/productos/ProductoImagen";
 
 interface GrupoProducto {
   producto_id: number;
@@ -16,6 +17,7 @@ interface GrupoProducto {
   linea: string;
   linea_id: number;
   precio_base: number;
+  imagen_path: string | null;
   tallas: VStockTotal[];
   totalGeneral: number;
   totalTienda: number;
@@ -35,7 +37,9 @@ export default function InventarioPage() {
   const [tallasDisponibles, setTallasDisponibles] = useState<TallaOpcion[]>([]);
   const [tallaOrden, setTallaOrden] = useState<Map<number, number>>(new Map());
   const [precios, setPrecios] = useState<Map<number, number>>(new Map());
+  const [imagenes, setImagenes] = useState<Map<number, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [limiteMobile, setLimiteMobile] = useState(30);
 
   const [busqueda, setBusqueda] = useState("");
   const [lineaFiltro, setLineaFiltro] = useState<number | null>(null);
@@ -52,11 +56,16 @@ export default function InventarioPage() {
       supabase.from("lineas").select("*").order("orden"),
       supabase.from("categorias").select("*").order("orden"),
       supabase.from("tallas").select("id, nombre, orden").order("orden"),
-      supabase.from("productos").select("id, precio_base").eq("activo", true),
+      supabase.from("productos").select("id, precio_base, imagen_path").eq("activo", true),
     ]);
     const precioMap = new Map<number, number>();
-    (prods ?? []).forEach((p: any) => precioMap.set(p.id, p.precio_base ?? 0));
+    const imagenMap = new Map<number, string | null>();
+    (prods ?? []).forEach((p: any) => {
+      precioMap.set(p.id, p.precio_base ?? 0);
+      imagenMap.set(p.id, p.imagen_path ?? null);
+    });
     setPrecios(precioMap);
+    setImagenes(imagenMap);
     setStock(st ?? []);
     setLineas(li ?? []);
     setCategorias(ca ?? []);
@@ -70,6 +79,10 @@ export default function InventarioPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    setLimiteMobile(30);
+  }, [busqueda, lineaFiltro, categoriaFiltro, tallaFiltro]);
 
   function toggleExpand(id: number) {
     setExpandidos(prev => {
@@ -99,6 +112,7 @@ export default function InventarioPage() {
           categoria: row.categoria, linea: row.linea,
           linea_id: Number(row.linea_id),
           precio_base: precios.get(row.producto_id) ?? 0,
+          imagen_path: imagenes.get(row.producto_id) ?? null,
           tallas: [], totalGeneral: 0, totalTienda: 0, totalBodega: 0,
         });
       }
@@ -119,7 +133,7 @@ export default function InventarioPage() {
       return result.filter(g => g.tallas.some(t => t.talla_id === tallaFiltro));
     }
     return result;
-  }, [stock, lineaFiltro, categoriaFiltro, tallaFiltro, busqueda, tallaOrden, precios]);
+  }, [stock, lineaFiltro, categoriaFiltro, tallaFiltro, busqueda, tallaOrden, precios, imagenes]);
 
   // Categorías visibles según línea seleccionada
   const categoriasVisibles = useMemo(() =>
@@ -275,7 +289,16 @@ export default function InventarioPage() {
                   {grupos.map(g => (
                     <tr key={g.producto_id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{g.referencia}</p>
+                        <div className="flex items-center gap-3">
+                          <ProductoImagen
+                            imagenPath={g.imagen_path}
+                            referencia={g.referencia}
+                            variante="thumb"
+                            className="h-12 w-12 shrink-0"
+                            ampliable
+                          />
+                          <p className="font-semibold text-gray-900">{g.referencia}</p>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         <p>{g.linea}</p>
@@ -320,11 +343,19 @@ export default function InventarioPage() {
 
           {/* MOBILE: cards colapsables */}
           <div className="md:hidden space-y-3">
-            {grupos.map(g => {
+            {grupos.slice(0, limiteMobile).map(g => {
               const expanded = expandidos.has(g.producto_id);
               return (
                 <div key={g.producto_id} className="card">
-                  <button onClick={() => toggleExpand(g.producto_id)} className="w-full flex items-start gap-3 text-left">
+                  <div className="flex items-start gap-3">
+                    <ProductoImagen
+                      imagenPath={g.imagen_path}
+                      referencia={g.referencia}
+                      variante="thumb"
+                      className="h-[72px] w-[72px] shrink-0"
+                      ampliable
+                    />
+                    <button onClick={() => toggleExpand(g.producto_id)} className="min-w-0 flex-1 flex items-start gap-3 text-left">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-900">{g.referencia}</p>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -338,7 +369,8 @@ export default function InventarioPage() {
                       </Badge>
                       {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                     </div>
-                  </button>
+                    </button>
+                  </div>
                   {expanded && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
                       <div className="grid grid-cols-4 gap-1.5 mb-3">
@@ -364,6 +396,15 @@ export default function InventarioPage() {
                 </div>
               );
             })}
+            {grupos.length > limiteMobile && (
+              <button
+                type="button"
+                onClick={() => setLimiteMobile(limite => limite + 30)}
+                className="w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-brand-blue"
+              >
+                Mostrar más ({grupos.length - limiteMobile})
+              </button>
+            )}
           </div>
         </>
       )}
