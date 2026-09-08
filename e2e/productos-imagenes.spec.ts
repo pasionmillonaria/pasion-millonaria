@@ -8,6 +8,12 @@ async function imagenWebp(color: string, ancho = 1400, alto = 1000) {
   }).webp({ quality: 92 }).toBuffer();
 }
 
+async function imagenJpeg(color: string, ancho = 1400, alto = 1000) {
+  return sharp({
+    create: { width: ancho, height: alto, channels: 3, background: color },
+  }).jpeg({ quality: 92 }).toBuffer();
+}
+
 test.describe.serial("imagenes optimizadas de productos", () => {
   test("protege las escrituras y rechaza archivos invalidos", async ({ page, request }) => {
     const productos = await restGet(request, "productos?codigo=eq.DEMO-001&select=id");
@@ -41,7 +47,7 @@ test.describe.serial("imagenes optimizadas de productos", () => {
     await loginAsAdmin(page);
 
     const primera = await page.request.post(`/api/productos/${productoId}/imagen`, {
-      multipart: { imagen: { name: "azul.webp", mimeType: "image/webp", buffer: await imagenWebp("#1c3a8c") } },
+      multipart: { imagen: { name: "azul.jpg", mimeType: "image/jpeg", buffer: await imagenJpeg("#1c3a8c") } },
     });
     expect(primera.ok(), await primera.text()).toBeTruthy();
     const primeraData = await primera.json();
@@ -85,6 +91,16 @@ test.describe.serial("imagenes optimizadas de productos", () => {
   });
 
   test("prepara una foto JPG desde el formulario sin subir el original", async ({ page }) => {
+    await page.addInitScript(() => {
+      const toBlobOriginal = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+        if (type === "image/webp") {
+          callback(null);
+          return;
+        }
+        return toBlobOriginal.call(this, callback, type, quality);
+      };
+    });
     await loginAsAdmin(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("link", { name: "Productos", exact: true }).click();
@@ -97,7 +113,7 @@ test.describe.serial("imagenes optimizadas de productos", () => {
       mimeType: "image/jpeg",
       buffer: jpg,
     });
-    await expect(page.getByTestId("selector-imagen-producto").getByText(/KB$/)).toBeVisible();
+    await expect(page.getByTestId("selector-imagen-producto").getByText(/JPEG · \d+ KB$/)).toBeVisible();
     await expect(page.getByAltText("Vista previa de producto", { exact: false })).toBeVisible();
     await page.getByRole("button", { name: "Ampliar foto de producto" }).click();
     await expect(page.getByRole("dialog", { name: "Foto ampliada de producto" })).toBeVisible();

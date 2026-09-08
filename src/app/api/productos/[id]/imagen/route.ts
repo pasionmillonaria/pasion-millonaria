@@ -73,8 +73,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (!(archivo instanceof File)) {
     return NextResponse.json({ error: "Falta el archivo imagen" }, { status: 400 });
   }
-  if (archivo.type !== "image/webp") {
-    return NextResponse.json({ error: "La imagen procesada debe ser WebP" }, { status: 400 });
+  if (!new Set(["image/webp", "image/jpeg"]).has(archivo.type)) {
+    return NextResponse.json({ error: "La imagen procesada debe ser WebP o JPEG" }, { status: 400 });
   }
   if (archivo.size === 0 || archivo.size > MAX_IMAGEN_CLIENTE_BYTES) {
     return NextResponse.json({ error: "La imagen procesada supera 1 MB" }, { status: 413 });
