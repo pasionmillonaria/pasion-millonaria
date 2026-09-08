@@ -28,15 +28,9 @@ function cargarImagen(blob: Blob): Promise<HTMLImageElement> {
   });
 }
 
-function canvasAWebp(canvas: HTMLCanvasElement, calidad: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(blob => {
-      if (!blob || blob.type !== "image/webp") {
-        reject(new Error("Este navegador no permite convertir la imagen a WebP"));
-        return;
-      }
-      resolve(blob);
-    }, "image/webp", calidad);
+function canvasABlob(canvas: HTMLCanvasElement, tipo: "image/webp" | "image/jpeg", calidad: number) {
+  return new Promise<Blob | null>(resolve => {
+    canvas.toBlob(resolve, tipo, calidad);
   });
 }
 
@@ -58,12 +52,21 @@ export async function prepararImagenEnNavegador(file: File): Promise<File> {
   canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("No se pudo preparar la imagen");
+  ctx.fillStyle = "#f3f4f6";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
+  let tipoSalida: "image/webp" | "image/jpeg" = "image/webp";
   for (let calidad = 0.82; calidad >= 0.4; calidad -= 0.07) {
-    const blob = await canvasAWebp(canvas, calidad);
+    let blob = await canvasABlob(canvas, tipoSalida, calidad);
+    if (tipoSalida === "image/webp" && (!blob || blob.type !== "image/webp")) {
+      tipoSalida = "image/jpeg";
+      blob = await canvasABlob(canvas, tipoSalida, calidad);
+    }
+    if (!blob || blob.type !== tipoSalida) continue;
     if (blob.size <= MAX_IMAGEN_CLIENTE_BYTES) {
-      return new File([blob], "imagen-producto.webp", { type: "image/webp" });
+      const extension = tipoSalida === "image/webp" ? "webp" : "jpg";
+      return new File([blob], `imagen-producto.${extension}`, { type: tipoSalida });
     }
   }
   throw new Error("No fue posible reducir la foto por debajo de 1 MB");

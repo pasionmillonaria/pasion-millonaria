@@ -62,7 +62,7 @@ export default function SelectorImagenProducto({
           <p className="font-bold text-gray-900">Foto del producto</p>
           <p className="text-xs text-gray-400">Opcional · se optimiza antes de subir</p>
         </div>
-        {archivo && <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">{Math.ceil(archivo.size / 1024)} KB</span>}
+        {archivo && <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">{archivo.type === "image/jpeg" ? "JPEG" : "WebP"} · {Math.ceil(archivo.size / 1024)} KB</span>}
       </div>
 
       <div className="mx-auto mb-3 aspect-square w-full max-w-[18rem] rounded-2xl bg-gray-100">
