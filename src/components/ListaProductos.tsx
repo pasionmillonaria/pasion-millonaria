@@ -1,21 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Producto } from "@/lib/types";
-
-interface ProductoConInfo extends Producto {
-  categoria_nombre: string;
-  linea_nombre: string;
-}
+import { buscarProductos } from "@/lib/product-search";
+import ProductoResultado, { type ProductoConInfo } from "@/components/ProductoResultado";
 
 interface Props {
   onSelect: (producto: ProductoConInfo) => void;
   placeholder?: string;
 }
 
-export default function ListaProductos({ onSelect, placeholder = "Filtrar productos..." }: Props) {
+export default function ListaProductos({ onSelect, placeholder = "Buscar por nombre, código o categoría..." }: Props) {
   const supabase = createClient();
   const [todos, setTodos] = useState<ProductoConInfo[]>([]);
   const [query, setQuery] = useState("");
@@ -23,94 +19,55 @@ export default function ListaProductos({ onSelect, placeholder = "Filtrar produc
 
   useEffect(() => {
     async function cargar() {
-      const { data } = await supabase
-        .from("productos")
+      const { data } = await supabase.from("productos")
         .select("*, categorias(nombre), lineas(nombre)")
-        .eq("activo", true)
-        .order("referencia");
-      if (data) {
-        setTodos(data.map((p: any) => ({
-          ...p,
-          categoria_nombre: p.categorias?.nombre ?? "",
-          linea_nombre: p.lineas?.nombre ?? "",
-          categorias: undefined,
-          lineas: undefined,
-        })));
-      }
+        .eq("activo", true).order("referencia");
+      if (data) setTodos(data.map((p: any) => ({
+        ...p,
+        categoria_nombre: p.categorias?.nombre ?? "",
+        linea_nombre: p.lineas?.nombre ?? "",
+        categorias: undefined,
+        lineas: undefined,
+      })));
       setLoading(false);
     }
     cargar();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtrados = !query.trim()
-    ? todos
-    : todos.filter(p => {
-        const q = query.toLowerCase();
-        return (
-          p.referencia.toLowerCase().includes(q) ||
-          p.codigo.toLowerCase().includes(q) ||
-          p.categoria_nombre.toLowerCase().includes(q) ||
-          p.linea_nombre.toLowerCase().includes(q)
-        );
-      });
+  const filtrados = useMemo(
+    () => buscarProductos(todos, query, query.trim() ? 30 : undefined),
+    [todos, query],
+  );
 
   return (
     <div>
-      {/* Barra de filtro */}
       <div className="relative mb-3">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-        <input
-          type="text"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder={placeholder}
-          className="input pl-9 pr-9 text-sm"
-          autoFocus
-        />
-        {query && (
-          <button
-            onClick={() => setQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
+        <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+        <input type="search" value={query} onChange={event => setQuery(event.target.value)}
+          placeholder={placeholder} autoFocus autoComplete="off"
+          className="input min-h-12 pl-10 pr-10 text-base md:text-sm" />
+        {query && <button type="button" onClick={() => setQuery("")} aria-label="Limpiar búsqueda"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+          <X className="h-4 w-4" />
+        </button>}
       </div>
 
-      {/* Lista */}
       {loading ? (
-        <div className="py-8 text-center text-sm text-gray-400">Cargando productos...</div>
+        <div className="py-10 text-center text-sm text-gray-400">Cargando productos...</div>
       ) : filtrados.length === 0 ? (
-        <div className="py-8 text-center text-sm text-gray-400">Sin resultados para "{query}"</div>
+        <div className="rounded-xl border border-dashed border-gray-200 px-5 py-8 text-center">
+          <p className="text-sm font-semibold text-gray-600">No encontramos “{query}”</p>
+          <p className="mt-1 text-xs leading-relaxed text-gray-400">Prueba con cualquier palabra del nombre, el código, la categoría o la línea.</p>
+        </div>
       ) : (
-        <div className="max-h-72 md:max-h-[calc(100vh-280px)] overflow-y-auto rounded-xl border border-gray-100 divide-y divide-gray-50">
-          {filtrados.map(p => (
-            <button
-              key={p.id}
-              onClick={() => onSelect(p)}
-              className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="font-semibold text-sm text-gray-900">{p.referencia}</span>
-                {p.linea_nombre && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-brand-blue/10 text-brand-blue leading-none shrink-0">
-                    {p.linea_nombre}
-                  </span>
-                )}
-              </div>
-              {p.categoria_nombre && (
-                <p className="text-xs text-gray-400">{p.categoria_nombre}</p>
-              )}
-            </button>
-          ))}
+        <div className="max-h-[22rem] divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100 bg-white shadow-sm md:max-h-[calc(100vh-280px)]">
+          {filtrados.map(producto => <ProductoResultado key={producto.id} producto={producto} onSelect={onSelect} />)}
         </div>
       )}
 
-      {!loading && (
-        <p className="text-xs text-gray-300 mt-2 text-right">
-          {filtrados.length}{query ? ` de ${todos.length}` : ""} producto{filtrados.length !== 1 ? "s" : ""}
-        </p>
-      )}
+      {!loading && filtrados.length > 0 && <p className="mt-2 text-right text-xs text-gray-300">
+        {filtrados.length}{query ? ` de ${todos.length}` : ""} producto{filtrados.length !== 1 ? "s" : ""}
+      </p>}
     </div>
   );
 }

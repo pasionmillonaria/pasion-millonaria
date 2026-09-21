@@ -365,6 +365,8 @@ export interface Database {
           usuario_apertura: string | null;
           usuario_cierre: string | null;
           notas: string | null;
+          cerrada_automaticamente: boolean;
+          cerrada_en: string | null;
         };
         Insert: {
           fecha: string;
@@ -376,6 +378,8 @@ export interface Database {
           usuario_apertura?: string | null;
           usuario_cierre?: string | null;
           notas?: string | null;
+          cerrada_automaticamente?: boolean;
+          cerrada_en?: string | null;
         };
         Update: {
           fecha?: string;
@@ -387,6 +391,8 @@ export interface Database {
           usuario_apertura?: string | null;
           usuario_cierre?: string | null;
           notas?: string | null;
+          cerrada_automaticamente?: boolean;
+          cerrada_en?: string | null;
         };
         Relationships: [];
       };
@@ -406,6 +412,9 @@ export interface Database {
           monto_transferencia: number;
           usuario_id: string | null;
           created_at: string;
+          ocurrio_en: string;
+          sincronizado_en: string;
+          cliente_operacion_id: string | null;
         };
         Insert: {
           caja_diaria_id: number;
@@ -420,6 +429,9 @@ export interface Database {
           monto_efectivo?: number;
           monto_transferencia?: number;
           usuario_id?: string | null;
+          ocurrio_en?: string;
+          sincronizado_en?: string;
+          cliente_operacion_id?: string | null;
         };
         Update: {
           caja_diaria_id?: number;
@@ -434,6 +446,9 @@ export interface Database {
           monto_efectivo?: number;
           monto_transferencia?: number;
           usuario_id?: string | null;
+          ocurrio_en?: string;
+          sincronizado_en?: string;
+          cliente_operacion_id?: string | null;
         };
         Relationships: [];
       };
@@ -566,6 +581,50 @@ export interface Database {
       };
     };
     Functions: {
+      registrar_cambio: {
+        Args: {
+          p_entradas: unknown;
+          p_salidas: unknown;
+          p_metodo_pago: string;
+          p_referencia: string;
+        };
+        Returns: {
+          referencia: string;
+          total_entrada: number;
+          total_salida: number;
+          diferencia: number;
+          caja_diaria_id: number | null;
+        };
+      };
+      fecha_operativa: {
+        Args: { p_instante?: string };
+        Returns: string;
+      };
+      cerrar_cajas_vencidas: {
+        Args: { p_ahora?: string };
+        Returns: number;
+      };
+      asegurar_caja_operativa: {
+        Args: { p_ocurrio_en?: string; p_permitir_historica_cerrada?: boolean };
+        Returns: number;
+      };
+      registrar_operacion_caja: {
+        Args: {
+          p_cliente_operacion_id: string;
+          p_ocurrio_en: string;
+          p_tipo: string;
+          p_descripcion: string;
+          p_valor: number;
+          p_metodo_pago: string;
+          p_monto_efectivo: number;
+          p_monto_transferencia: number;
+          p_producto_id?: number | null;
+          p_talla_id?: number | null;
+          p_cantidad?: number;
+          p_abono_id?: number | null;
+        };
+        Returns: { registro_id: number; movimiento_id: number | null; caja_diaria_id: number; duplicado: boolean };
+      };
       corregir_metodo_abono: {
         Args: { p_abono_id: number; p_metodo: string };
         Returns: { abono_id: number; metodo: string; caja_ajustada: boolean };

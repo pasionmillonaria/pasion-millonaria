@@ -28,7 +28,7 @@ test("registrar una venta del inventario descuenta el stock", async ({ page, req
   // Buscar y seleccionar el producto.
   await page
     .getByPlaceholder("Buscar producto para el pedido...")
-    .fill("Buso Millonarios Azul");
+    .fill("azul buso");
   await page.getByRole("button", { name: /Buso Millonarios Azul/ }).click();
 
   // Seleccionar la talla M (la ubicacion Tienda viene por defecto).
@@ -51,4 +51,18 @@ test("registrar una venta del inventario descuenta el stock", async ({ page, req
   // El stock en tienda bajo exactamente 1 unidad (descontado por el trigger).
   const stockDespues = await getStockTienda(request, "DEMO-001", "M", "ropa_adulto");
   expect(stockDespues).toBe(stockAntes - 1);
+});
+
+test("la búsqueda móvil ignora tildes, orden y errores pequeños", async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("link", { name: /Venta/ }).click();
+
+  const buscador = page.getByPlaceholder("Buscar producto para el pedido...");
+  await buscador.fill("clasica");
+  await expect(page.getByRole("button", { name: /Gorra Clásica/ })).toBeVisible();
+
+  await buscador.fill("millonaros azul");
+  await expect(page.getByRole("button", { name: /Buso Millonarios Azul/ })).toBeVisible();
+  await expect(page.getByLabel("Sin foto para Buso Millonarios Azul")).toBeVisible();
 });

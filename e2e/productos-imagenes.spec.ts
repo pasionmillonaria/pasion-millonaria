@@ -42,6 +42,7 @@ test.describe.serial("imagenes optimizadas de productos", () => {
   });
 
   test("crea dos WebP, reemplaza la version y elimina la anterior", async ({ page, request }) => {
+    test.setTimeout(60_000);
     const productos = await restGet(request, "productos?codigo=eq.DEMO-001&select=id");
     const productoId = productos[0].id;
     await loginAsAdmin(page);
@@ -71,6 +72,10 @@ test.describe.serial("imagenes optimizadas de productos", () => {
     await expect(page.getByRole("dialog", { name: "Foto ampliada de Buso Millonarios Azul" })).toBeVisible();
     await page.getByRole("button", { name: "Cerrar foto" }).click();
     await page.getByRole("link", { name: "Inventario", exact: true }).click();
+    await expect(page.getByRole("img", { name: "Buso Millonarios Azul" })).toBeVisible();
+    await page.getByRole("link", { name: "Inicio", exact: true }).click();
+    await page.getByRole("link", { name: /Venta/ }).click();
+    await page.getByPlaceholder("Buscar producto para el pedido...").fill("azul buso");
     await expect(page.getByRole("img", { name: "Buso Millonarios Azul" })).toBeVisible();
 
     const segunda = await page.request.post(`/api/productos/${productoId}/imagen`, {

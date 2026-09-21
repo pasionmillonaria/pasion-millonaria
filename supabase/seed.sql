@@ -75,6 +75,13 @@ INSERT INTO public.productos (codigo, referencia, linea_id, categoria_id, sistem
      (SELECT id FROM public.categorias WHERE nombre = 'Gorras'),
      'unica',        35000, true);
 
+-- Comodín para artículos vendidos sin control de inventario.
+INSERT INTO public.productos (codigo, referencia, linea_id, categoria_id, sistema_talla, precio_base, activo)
+VALUES ('LIBRE', 'Artículo Libre',
+  (SELECT id FROM public.lineas WHERE nombre = 'Accesorio'),
+  (SELECT id FROM public.categorias WHERE nombre = 'Otro'),
+  'unica', 0, false);
+
 -- ── 5. Stock inicial (tienda + bodega) ──────────────────────
 -- Insertado directo en `stock` (equivale a lo que haría el trigger
 -- al registrar un movimiento de entrada). Las filas con cantidad <= 3
@@ -100,7 +107,7 @@ JOIN public.ubicaciones u ON u.nombre  = v.ubic;
 -- ── 6. Caja del día ABIERTA ─────────────────────────────────
 INSERT INTO public.caja_diaria (fecha, saldo_inicial, estado, usuario_apertura)
 VALUES (
-  CURRENT_DATE,
+  public.fecha_operativa(now()),
   200000,
   'abierta',
   (SELECT id FROM public.usuarios WHERE rol = 'admin' LIMIT 1)

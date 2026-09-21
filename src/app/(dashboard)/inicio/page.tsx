@@ -13,6 +13,7 @@ import { formatCurrency, formatMetodoPago, LABELS_CANAL } from "@/lib/utils";
 import { buildPedidosVenta, CANALES_PEDIDO, type PedidoVentaResumen } from "@/lib/pedidos-venta";
 import type { Abono, VApartadosPendientes, VStockBajo, VResumenCajaHoy } from "@/lib/types";
 import { agruparPrendasApartado, calcularResumenFinancieroApartado } from "@/lib/apartados";
+import { agruparCambiosDelDia, nombreMovimientoCambio, tituloCambio, type CambioDelDia, type MovimientoCambioResumen } from "@/lib/cambios";
 import Spinner from "@/components/ui/Spinner";
 import Badge from "@/components/ui/Badge";
 
@@ -37,6 +38,39 @@ interface ApartadoPendienteInicio {
   enTienda: boolean;
   totalSaldo: number;
   fecha: string;
+}
+
+function ResumenLadoCambio({ titulo, items, color }: {
+  titulo: string;
+  items: MovimientoCambioResumen[];
+  color: "orange" | "green";
+}) {
+  const unidades = items.reduce((total, item) => total + item.cantidad, 0);
+  return (
+    <div className={`rounded-xl bg-white border p-2.5 ${color === "orange" ? "border-l-4 border-orange-300" : "border-l-4 border-green-300"}`}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className={`text-[10px] font-bold uppercase ${color === "orange" ? "text-orange-600" : "text-green-600"}`}>
+          {titulo}
+        </span>
+        <span className="text-[10px] text-gray-400">{unidades} ud{unidades !== 1 ? "s" : ""}</span>
+      </div>
+      <div className="space-y-1.5">
+        {items.map(item => (
+          <div key={item.id} className="flex items-center gap-2 rounded-lg bg-gray-50/80 px-2 py-1.5">
+            <span className={`flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-[11px] font-black ${color === "orange" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>
+              {item.cantidad}
+            </span>
+            <p className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-700">
+              {nombreMovimientoCambio(item)}
+            </p>
+            <span className="shrink-0 rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+              Talla {item.tallas?.nombre ?? "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function agruparApartadosInicio(
@@ -92,6 +126,7 @@ export default function InicioPage() {
   const [stockBajo, setStockBajo] = useState<VStockBajo[]>([]);
   const [resumenHoy, setResumenHoy] = useState<VResumenCajaHoy[]>([]);
   const [pedidosHoy, setPedidosHoy] = useState<PedidoVentaResumen[]>([]);
+  const [cambiosHoy, setCambiosHoy] = useState<CambioDelDia[]>([]);
   const [totalCajaFuerte, setTotalCajaFuerte] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
@@ -102,7 +137,7 @@ export default function InicioPage() {
     const finDia = new Date(inicioDia);
     finDia.setDate(finDia.getDate() + 1);
 
-    const [{ data: ap }, { data: sb }, { data: ventasData }, resumenResponse, { data: cajaFuerteData }] = await Promise.all([
+    const [{ data: ap }, { data: sb }, { data: ventasData }, resumenResponse, { data: cajaFuerteData }, { data: cambiosData }] = await Promise.all([
       supabase.from("v_apartados_pendientes").select("*").eq("estado", "pendiente").order("en_tienda", { ascending: true }).order("fecha", { ascending: true }),
       supabase.from("v_stock_bajo").select("*").limit(20),
       supabase
@@ -117,6 +152,13 @@ export default function InicioPage() {
         ? supabase.from("v_resumen_caja_hoy").select("*")
         : Promise.resolve({ data: [] as VResumenCajaHoy[] | null }),
       supabase.from("registros_caja").select("valor").eq("tipo", "caja_fuerte"),
+      supabase
+        .from("movimientos")
+        .select("id, fecha, tipo, cantidad, precio_venta, movimiento_ref, nota, productos(referencia, codigo), tallas(nombre)")
+        .eq("canal", "cambio")
+        .gte("fecha", inicioDia.toISOString())
+        .lt("fecha", finDia.toISOString())
+        .order("fecha", { ascending: false }),
     ]);
     const gruposIds = Array.from(new Set((ap ?? []).map(item => item.grupo_id ?? item.id)));
     const { data: abonosApartados } = gruposIds.length > 0
@@ -125,6 +167,7 @@ export default function InicioPage() {
     setApartados(agruparApartadosInicio(ap ?? [], abonosApartados ?? []).slice(0, 20));
     setStockBajo(sb ?? []);
     setPedidosHoy(buildPedidosVenta((ventasData ?? []) as any[]));
+    setCambiosHoy(agruparCambiosDelDia((cambiosData ?? []) as unknown as MovimientoCambioResumen[]));
     setResumenHoy(resumenResponse.data ?? []);
     setTotalCajaFuerte(cajaFuerteData?.reduce((sum, r) => sum + Number(r.valor), 0) || 0);
     setLoading(false);
@@ -355,6 +398,47 @@ export default function InicioPage() {
                         ))}
                       </div>
                     )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Cambios realizados hoy */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <ArrowLeftRight className="w-5 h-5 text-blue-600" />
+                Cambios de hoy
+              </h3>
+              {cambiosHoy.length > 0 && <Badge variant="info">{cambiosHoy.length}</Badge>}
+            </div>
+            {loading ? (
+              <Spinner className="py-4" />
+            ) : cambiosHoy.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-4">Sin cambios registrados hoy</p>
+            ) : (
+              <div className="space-y-3">
+                {cambiosHoy.map(cambio => (
+                  <div key={cambio.referencia} className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3 hover:shadow-sm transition-shadow">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900">{tituloCambio(cambio)}</p>
+                        <p className="text-xs text-gray-400">{cambio.referencia} · {formatHora(cambio.fecha)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-sm font-bold ${cambio.diferencia > 0 ? "text-green-600" : cambio.diferencia < 0 ? "text-red-600" : "text-gray-500"}`}>
+                          {cambio.diferencia > 0 ? "+" : ""}{formatCurrency(cambio.diferencia)}
+                        </p>
+                        <p className="text-[10px] text-gray-400">
+                          {cambio.diferencia > 0 ? "Pagó el cliente" : cambio.diferencia < 0 ? "Reembolso" : "Sin diferencia"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <ResumenLadoCambio titulo="Cliente devolvió" items={cambio.entradas} color="orange" />
+                      <ResumenLadoCambio titulo="Cliente recibió" items={cambio.salidas} color="green" />
+                    </div>
                   </div>
                 ))}
               </div>

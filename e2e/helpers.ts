@@ -57,6 +57,27 @@ export async function restPost(
   return res.json();
 }
 
+/** Ejecuta una funcion PostgREST/RPC y devuelve su respuesta JSON. */
+export async function restRpc(
+  request: APIRequestContext,
+  funcion: string,
+  body: Record<string, unknown>,
+  debeFuncionar = true,
+) {
+  const res = await request.post(`${SUPABASE_URL}/rest/v1/rpc/${funcion}`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+    },
+    data: body,
+  });
+  if (debeFuncionar) {
+    expect(res.ok(), `RPC ${funcion} -> ${res.status()} ${await res.text()}`).toBeTruthy();
+  }
+  return { ok: res.ok(), status: res.status(), data: await res.json() };
+}
+
 /** PATCH contra PostgREST del laboratorio local y devuelve las filas modificadas. */
 export async function restPatch(
   request: APIRequestContext,

@@ -12,6 +12,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import ListaProductos from "@/components/ListaProductos";
+import ProductoImagen from "@/components/productos/ProductoImagen";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
 import InputDinero from "@/components/ui/InputDinero";
@@ -35,6 +36,7 @@ interface ProductoSeleccionado {
   categoria_nombre: string;
   linea_nombre: string;
   sistema_talla: string;
+  imagen_path: string | null;
 }
 
 interface ItemVenta {
@@ -372,6 +374,7 @@ export default function VentaPage() {
               categoria_nombre: "Otro",
               linea_nombre: "Accesorio",
               sistema_talla: "unica",
+              imagen_path: null,
             },
       descripcionLibre: itemTempModo === "libre" ? itemTempDescripcionLibre.trim() : undefined,
       tallas: itemTempTallas,
@@ -789,18 +792,26 @@ export default function VentaPage() {
                     />
                   ) : (
                     <>
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
+                      <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-2.5">
+                        <ProductoImagen
+                          imagenPath={itemTempProducto.imagen_path}
+                          referencia={itemTempProducto.referencia}
+                          className="h-16 w-16 shrink-0 border border-white bg-white shadow-sm"
+                        />
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold text-gray-900 truncate">
                             {itemTempProducto.referencia}
                           </p>
-                          <p className="text-xs text-gray-400">
-                            {itemTempProducto.categoria_nombre}
+                          <p className="text-xs font-medium text-gray-400">
+                            {itemTempProducto.codigo}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {[itemTempProducto.categoria_nombre, itemTempProducto.linea_nombre].filter(Boolean).join(" · ")}
                           </p>
                         </div>
                         <button
                           onClick={resetItemTemporal}
-                          className="text-brand-blue text-sm font-medium"
+                          className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-brand-blue shadow-sm"
                         >
                           Cambiar
                         </button>

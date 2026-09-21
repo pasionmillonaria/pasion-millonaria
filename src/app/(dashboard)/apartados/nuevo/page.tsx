@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bookmark, CheckCircle, ChevronLeft, UserPlus, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, getLocalDateString, getLocalTimeString } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import InputDinero from "@/components/ui/InputDinero";
 import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
@@ -246,46 +246,22 @@ export default function NuevoApartadoPage() {
       }).select("id").single();
       if (abonoErr || !abonoCreado) { toast.error("Error al guardar abono: " + (abonoErr?.message ?? "")); setLoading(false); return; }
 
-      // Registrar en caja: usar la caja de HOY (no cualquier caja abierta de otro
-      // día). Si no existe, crearla; si está cerrada, avisar y no sumarla.
-      const hoy = getLocalDateString();
-      let cajaDiariaId: number | null = null;
-      let cajaHoyCerrada = false;
-      const { data: cajaHoy } = await supabase
-        .from("caja_diaria").select("id, estado")
-        .eq("fecha", hoy).maybeSingle();
-
-      if (cajaHoy) {
-        if (cajaHoy.estado === "abierta") cajaDiariaId = cajaHoy.id;
-        else cajaHoyCerrada = true;
-      } else {
-        // No hay caja de hoy: crearla automáticamente (abierta).
-        const { data: ultima } = await supabase
-          .from("v_resumen_caja" as any).select("saldo_final")
-          .eq("estado", "cerrada").order("fecha", { ascending: false }).limit(1).maybeSingle();
-        const saldoInicial = (ultima as any)?.saldo_final ?? 0;
-        const { data: nueva } = await supabase
-          .from("caja_diaria")
-          .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
-          .select("id").maybeSingle();
-        cajaDiariaId = nueva?.id ?? null;
-      }
-
-      if (cajaDiariaId && canal === "venta_tienda") {
-        const hora = getLocalTimeString();
+      // La primera operación monetaria del día abre la caja automáticamente.
+      if (canal === "venta_tienda") {
         const esEfectivo = metodoPago === "efectivo";
-        const { error: cajaErr } = await supabase.from("registros_caja").insert({
-          caja_diaria_id: cajaDiariaId, fecha: hoy, hora,
-          tipo: "ingreso" as const,
-          abono_id: abonoCreado.id,
-          descripcion: `Abono inicial apartado — ${clienteNombre.trim()}`,
-          valor: abonoNum, metodo_pago: metodoPago,
-          monto_efectivo: esEfectivo ? abonoNum : 0,
-          monto_transferencia: !esEfectivo ? abonoNum : 0,
+        const ocurrioEn = new Date().toISOString();
+        const { error: cajaErr } = await supabase.rpc("registrar_operacion_caja", {
+          p_cliente_operacion_id: `ABONO-${abonoCreado.id}`,
+          p_ocurrio_en: ocurrioEn,
+          p_tipo: "ingreso",
+          p_descripcion: `Abono inicial apartado — ${clienteNombre.trim()}`,
+          p_valor: abonoNum,
+          p_metodo_pago: metodoPago,
+          p_monto_efectivo: esEfectivo ? abonoNum : 0,
+          p_monto_transferencia: !esEfectivo ? abonoNum : 0,
+          p_abono_id: abonoCreado.id,
         });
         if (cajaErr) toast.error("Abono guardado, pero error al registrarlo en caja: " + cajaErr.message);
-      } else if (cajaHoyCerrada && canal === "venta_tienda") {
-        toast("Apartado creado. La caja de hoy ya está cerrada, así que el abono NO se sumó a la caja.", { icon: "⚠️", duration: 6000 });
       }
     }
 

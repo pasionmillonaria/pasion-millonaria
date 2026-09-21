@@ -25,6 +25,7 @@ function cargarEnvLocal() {
   }
 }
 cargarEnvLocal();
+const playwrightPort = Number(process.env.PLAYWRIGHT_PORT ?? "3000");
 
 /**
  * Configuracion de tests E2E (Playwright).
@@ -48,11 +49,9 @@ export default defineConfig({
   reporter: "html",
 
   use: {
-    baseURL: "http://localhost:3000",
-    // Fija el navegador en UTC para que la fecha local del navegador coincida
-    // con CURRENT_DATE de la base (UTC). Asi el seed (que crea la caja del dia
-    // con CURRENT_DATE) y la app (que usa la fecha local) hablan del mismo dia.
-    timezoneId: "UTC",
+    baseURL: `http://localhost:${playwrightPort}`,
+    // Caja y pruebas usan la misma zona operativa del negocio.
+    timezoneId: "America/Bogota",
     // Captura traza y screenshot solo cuando un test falla, para depurar.
     trace: "on-first-retry",
     screenshot: "only-on-failure",
@@ -68,8 +67,8 @@ export default defineConfig({
   // Arranca la app automaticamente antes de los tests.
   // No reutiliza un servidor previo: podría haberse iniciado con variables de otro entorno.
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
+    command: `npm run dev -- -p ${playwrightPort}`,
+    url: `http://localhost:${playwrightPort}`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

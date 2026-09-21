@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/cerrar-caja",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}

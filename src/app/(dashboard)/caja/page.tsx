@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, Fragment } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import {
   LayoutDashboard, Plus, Lock, Trash2, Download, AlertCircle,
   ShoppingBag, TrendingDown, TrendingUp, Shield, History,
   CheckCircle, Calendar, FileText, X, WifiOff, RefreshCw,
+  ArrowLeftRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -42,6 +43,7 @@ interface RegistroLocal {
   montoEfectivo: number;
   montoTransferencia: number;
   pending?: boolean;
+  ocurrioEn?: string;
 }
 
 interface TallaStock {
@@ -67,13 +69,20 @@ function genId() {
 function getNow() {
   const now = new Date();
   return {
-    fecha: getLocalDateString(now),
+    fecha: getFechaOperativaLocal(now),
     hora: getLocalTimeString(now),
+    ocurrioEn: now.toISOString(),
   };
 }
 
 function getHoy() {
-  return getLocalDateString();
+  return getFechaOperativaLocal();
+}
+
+function getFechaOperativaLocal(fecha = new Date()) {
+  const local = new Date(fecha);
+  if (local.getHours() >= 23) local.setDate(local.getDate() + 1);
+  return getLocalDateString(local);
 }
 
 function esPagoElectronico(metodo: MetodoPago | null) {
@@ -855,9 +864,6 @@ export default function CajaPage() {
   const [reporteParams, setReporteParams] = useState<ReporteParams | null>(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
 
-  const cajaDiariaIdRef = useRef<number | null>(null);
-  cajaDiariaIdRef.current = cajaDiariaId;
-
   // ── Totales computados ─────────────────────────────────────
   const ventas = registros.filter(r => r.tipo === "venta");
   const gastos = registros.filter(r => r.tipo === "gasto");
@@ -910,12 +916,14 @@ export default function CajaPage() {
       metodoPago: r.metodo_pago,
       montoEfectivo: r.monto_efectivo ?? 0,
       montoTransferencia: r.monto_transferencia ?? 0,
+      ocurrioEn: r.ocurrio_en ?? undefined,
     }));
   }
 
   // ── Load data ───────────────────────────────────────────────
   const cargarDatos = useCallback(async () => {
     setLoading(true);
+    await supabase.rpc("cerrar_cajas_vencidas", { p_ahora: new Date().toISOString() });
     const [{ data: cajaHoy }, { data: hist }] = await Promise.all([
       supabase.from("caja_diaria").select("*").eq("fecha", hoy).maybeSingle(),
       supabase.from("v_resumen_caja" as any).select("*").neq("fecha", hoy)
@@ -980,88 +988,60 @@ export default function CajaPage() {
     if (pending.length > 0) toast(`${pending.length} registro(s) pendientes de sincronizar`, { icon: "⚠️" });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Al llegar el corte operativo, recarga para dejar de usar el día anterior.
+  useEffect(() => {
+    const ahora = new Date();
+    const corte = new Date(ahora);
+    corte.setHours(23, 0, 1, 0);
+    if (ahora >= corte) corte.setDate(corte.getDate() + 1);
+    const timer = window.setTimeout(() => window.location.reload(), corte.getTime() - ahora.getTime());
+    return () => window.clearTimeout(timer);
+  }, []);
+
   // ── Ensure caja diaria exists ───────────────────────────────
   async function ensureCajaDiaria(): Promise<number> {
-    if (cajaDiariaIdRef.current) return cajaDiariaIdRef.current;
-    const { data: existing } = await supabase
-      .from("caja_diaria").select("id").eq("fecha", hoy).maybeSingle();
-    if (existing) {
-      setCajaDiariaId(existing.id);
-      return existing.id;
-    }
-    const { data, error } = await supabase
-      .from("caja_diaria")
-      .insert({ fecha: hoy, saldo_inicial: saldoInicial, guardado_caja_fuerte: 0, estado: "abierta" })
-      .select("id").single();
-    if (error || !data) throw new Error("Error creando caja: " + error?.message);
-    setCajaDiariaId(data.id);
-    return data.id;
+    const { data, error } = await supabase.rpc("asegurar_caja_operativa", {
+      p_ocurrio_en: new Date().toISOString(),
+      p_permitir_historica_cerrada: false,
+    });
+    if (error || !data) throw new Error(error?.message ?? "Error creando caja");
+    setCajaDiariaId(data);
+    return data;
   }
 
   // ── Guardar un registro en DB ────────────────────────────────
   async function guardarEnDB(
     data: Omit<RegistroLocal, "id" | "fecha" | "hora">,
-    fecha: string,
-    hora: string,
-    cid: number
+    operacionId: string,
+    ocurrioEn: string,
   ): Promise<{ dbId: number; movimientoId?: number }> {
-    let movimientoId: number | undefined;
-
-    // Para ventas: crear movimiento inmediatamente (stock se actualiza via trigger)
-    if (data.tipo === "venta" && data.productoId && data.tallaId) {
-      const { data: stockRow } = await supabase
-        .from("stock").select("ubicacion_id, cantidad")
-        .eq("producto_id", data.productoId).eq("talla_id", data.tallaId)
-        .gt("cantidad", 0).order("cantidad", { ascending: false })
-        .limit(1).maybeSingle();
-
-      const { data: mov, error: movErr } = await supabase
-        .from("movimientos")
-        .insert({
-          producto_id: data.productoId,
-          talla_id: data.tallaId,
-          ubicacion_id: stockRow?.ubicacion_id ?? 1,
-          cantidad: data.cantidad,
-          tipo: "salida" as const,
-          canal: "venta_tienda" as const,
-          precio_venta: data.valor / data.cantidad,
-          metodo_pago: data.metodoPago as MetodoPago,
-          caja_diaria_id: cid,
-        }).select("id").single();
-
-      if (movErr) throw movErr;
-      movimientoId = mov?.id;
-    }
-
-    const { data: saved, error } = await supabase
-      .from("registros_caja")
-      .insert({
-        caja_diaria_id: cid,
-        movimiento_id: movimientoId ?? null,
-        fecha,
-        hora,
-        tipo: data.tipo,
-        descripcion: data.descripcion,
-        valor: data.valor,
-        metodo_pago: data.metodoPago,
-        monto_efectivo: data.montoEfectivo,
-        monto_transferencia: data.montoTransferencia,
-      }).select("id").single();
-
+    const { data: saved, error } = await supabase.rpc("registrar_operacion_caja", {
+      p_cliente_operacion_id: operacionId,
+      p_ocurrio_en: ocurrioEn,
+      p_tipo: data.tipo,
+      p_descripcion: data.descripcion ?? "",
+      p_valor: data.valor,
+      p_metodo_pago: data.metodoPago ?? "efectivo",
+      p_monto_efectivo: data.montoEfectivo,
+      p_monto_transferencia: data.montoTransferencia,
+      p_producto_id: data.productoId,
+      p_talla_id: data.tallaId,
+      p_cantidad: data.cantidad,
+      p_abono_id: data.abonoId ?? null,
+    });
     if (error) throw error;
-    return { dbId: saved.id, movimientoId };
+    return { dbId: saved.registro_id, movimientoId: saved.movimiento_id ?? undefined };
   }
 
   // ── Agregar registro (con optimistic update y fallback offline) ──
   async function agregarRegistro(data: Omit<RegistroLocal, "id" | "fecha" | "hora">) {
-    const { fecha, hora } = getNow();
+    const { fecha, hora, ocurrioEn } = getNow();
     const id = genId();
-    const reg: RegistroLocal = { id, fecha, hora, pending: true, ...data };
+    const reg: RegistroLocal = { id, fecha, hora, ocurrioEn, pending: true, ...data };
     setRegistros(prev => [...prev, reg]);
 
     try {
-      const cid = await ensureCajaDiaria();
-      const { dbId, movimientoId } = await guardarEnDB(data, fecha, hora, cid);
+      const { dbId, movimientoId } = await guardarEnDB(data, id, ocurrioEn);
       setRegistros(prev => prev.map(r => r.id === id ? { ...r, dbId, movimientoId, pending: false } : r));
       const labels: Record<TipoRegistroCaja, string> = {
         venta: "Venta registrada", gasto: "Gasto registrado",
@@ -1086,8 +1066,8 @@ export default function CajaPage() {
     const restantes: PendingQueueItem[] = [];
     for (const item of pending) {
       try {
-        const cid = await ensureCajaDiaria();
-        const { dbId, movimientoId } = await guardarEnDB(item, item.fecha, item.hora, cid);
+        const ocurrioEn = item.ocurrioEn ?? new Date(`${item.fecha}T${item.hora}-05:00`).toISOString();
+        const { dbId, movimientoId } = await guardarEnDB(item, item.localId, ocurrioEn);
         setRegistros(prev => prev.map(r =>
           r.id === item.localId ? { ...r, dbId, movimientoId, pending: false } : r
         ));
@@ -1162,6 +1142,8 @@ export default function CajaPage() {
         efectivo_contado: contadoSnap,
         diferencia_caja: contadoSnap - debeHaberEnCaja,
         estado: "cerrada",
+        cerrada_automaticamente: false,
+        cerrada_en: new Date().toISOString(),
       }).eq("id", cid);
 
       setCajaEstado("cerrada");
@@ -1180,7 +1162,11 @@ export default function CajaPage() {
   async function reabrirCaja() {
     if (!isAdmin || !cajaDiariaId) return;
     if (!confirm("¿Reabrir la caja? Se podrán agregar más registros.")) return;
-    const { error } = await supabase.from("caja_diaria").update({ estado: "abierta" }).eq("id", cajaDiariaId);
+    const { error } = await supabase.from("caja_diaria").update({
+      estado: "abierta",
+      cerrada_automaticamente: false,
+      cerrada_en: null,
+    }).eq("id", cajaDiariaId);
     if (error) { toast.error("Error al reabrir"); return; }
     setCajaEstado("abierta");
     toast.success("Caja reabierta");
@@ -1379,13 +1365,58 @@ export default function CajaPage() {
             ) : (
               [...registros].reverse().map(r => {
                 const esRetiro = r.tipo === "caja_fuerte" && r.valor < 0;
+                const esCambio = /(?:Diferencia|Reembolso) por cambio/i.test(r.descripcion ?? "");
+                const referenciaCambio = r.descripcion?.match(/CAM-[A-Za-z0-9-]+/)?.[0];
                 const esPositivo = r.tipo === "venta" || r.tipo === "ingreso";
                 const colorValor = r.tipo === "venta" || r.tipo === "ingreso" ? "text-green-600"
                   : esRetiro ? "text-orange-600"
                   : r.tipo === "caja_fuerte" ? "text-amber-700"
                   : "text-red-600";
 
-                if (r.tipo === "venta") {
+                if (esCambio) {
+                  const esCobro = r.tipo === "venta";
+                  return (
+                    <div key={r.id} className={`rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-white p-3.5 ${r.pending ? "opacity-60" : ""}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                          <ArrowLeftRight className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-0.5 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-blue-700">
+                              Cambio
+                            </span>
+                            <span className="text-[11px] text-gray-400">{r.hora.slice(0, 5)}</span>
+                            {r.pending && <span className="text-[11px] font-medium text-orange-500">Pendiente</span>}
+                          </div>
+                          <p className="text-sm font-bold text-gray-900">
+                            {esCobro ? "Diferencia cobrada al cliente" : "Reembolso entregado al cliente"}
+                          </p>
+                          {referenciaCambio && <p className="mt-0.5 text-[10px] text-gray-400">Referencia {referenciaCambio}</p>}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className={`text-base font-black ${esCobro ? "text-green-600" : "text-red-600"}`}>
+                            {esCobro ? "+" : "−"}{formatCurrency(Math.abs(r.valor))}
+                          </p>
+                          {r.metodoPago && (
+                            <span className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-bold ${getMetodoBadge(r.metodoPago)}`}>
+                              {getMetodoLabel(r.metodoPago)}
+                            </span>
+                          )}
+                        </div>
+                        {cajaEstado === "abierta" && isAdmin && !r.abonoId && (
+                          <button onClick={() => setDeleteId(r.id)}
+                            className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Las ventas de inventario sí muestran sus datos de prenda.
+                if (r.tipo === "venta" && r.movimientoId) {
                   const pagoColor = getMetodoBadge(r.metodoPago);
                   const pagoLabel = getMetodoLabel(r.metodoPago);
                   return (

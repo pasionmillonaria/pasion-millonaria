@@ -29,7 +29,8 @@ export default function globalSetup() {
   for (let i = 1; i <= intentos; i++) {
     try {
       console.log(`\n[playwright] Reiniciando laboratorio local (supabase db reset) — intento ${i}/${intentos}...`);
-      execSync("npx supabase db reset", { stdio: "inherit", timeout: 240_000 });
+      const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+      execSync(`${npx} supabase db reset`, { stdio: "inherit", timeout: 240_000 });
       console.log("[playwright] Laboratorio listo.\n");
       return;
     } catch (err) {
