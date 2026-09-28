@@ -109,13 +109,15 @@ export default function ReportesPage() {
   const [topProductos, setTopProductos] = useState<TopProducto[]>([]);
   const [resumenMetodos, setResumenMetodos] = useState<ResumenMetodo[]>([]);
   const [resumenCanales, setResumenCanales] = useState<ResumenCanal[]>([]);
+  const [comisionesApartados, setComisionesApartados] = useState(0);
+  const [comisionesVentas, setComisionesVentas] = useState(0);
 
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     const desde = getFechaDesde(periodo);
     const hoy = getHoy();
 
-    const [{ data: cajasData }, { data: movsData }] = await Promise.all([
+    const [{ data: cajasData }, { data: movsData }, { data: comisionesData }] = await Promise.all([
       supabase
         .from("v_resumen_caja" as any)
         .select("*")
@@ -127,9 +129,19 @@ export default function ReportesPage() {
         .select("producto_id, cantidad, precio_venta, metodo_pago, canal, productos(referencia)")
         .eq("tipo", "salida")
         .gte("fecha", desde + "T00:00:00"),
+      supabase
+        .from("comisiones_apartados")
+        .select("monto_comision")
+        .gte("fecha_operativa", desde)
+        .lte("fecha_operativa", hoy),
     ]);
 
     setCajas((cajasData as unknown as VResumenCaja[]) ?? []);
+    setComisionesApartados((comisionesData ?? []).reduce((sum, row) => sum + Number(row.monto_comision ?? 0), 0));
+    setComisionesVentas((movsData ?? []).reduce((sum, row: any) => {
+      const precio = Number(row.precio_venta ?? 0);
+      return sum + (precio >= 30000 ? Number(row.cantidad ?? 0) * 1000 : 0);
+    }, 0));
 
     const porProducto = new Map<number, TopProducto>();
     const porMetodo   = new Map<string, ResumenMetodo>();
@@ -178,6 +190,7 @@ export default function ReportesPage() {
   const totalGastos    = cajas.reduce((s, c) => s + (c.total_gastos ?? 0), 0);
   const totalCajas     = cajas.length;
   const promedioDiario = totalCajas > 0 ? totalVentas / totalCajas : 0;
+  const totalComisiones = comisionesVentas + comisionesApartados;
   const maxIngresos    = topProductos[0]?.total_ingresos ?? 1;
 
   if (loading) return <Spinner className="h-screen" />;
@@ -219,12 +232,13 @@ export default function ReportesPage() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
             {[
               { label: "Ingresos totales", value: formatCurrency(totalVentas), icon: TrendingUp, color: "text-green-600", bg: "bg-green-50", border: "border-green-100" },
               { label: "Gastos totales",   value: formatCurrency(totalGastos), icon: TrendingDown, color: "text-red-500", bg: "bg-red-50", border: "border-red-100" },
               { label: "Días con caja",    value: String(totalCajas),          icon: Calendar,    color: "text-brand-blue", bg: "bg-blue-50", border: "border-blue-100" },
               { label: "Promedio / día",   value: formatCurrency(promedioDiario), icon: BarChart2, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-100" },
+              { label: "Comisiones",       value: formatCurrency(totalComisiones), icon: Banknote, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-100" },
             ].map(item => (
               <div key={item.label} className={`${item.bg} border ${item.border} rounded-2xl p-4 flex items-start gap-3`}>
                 <div className={`w-9 h-9 rounded-xl ${item.bg} flex items-center justify-center shrink-0`}>

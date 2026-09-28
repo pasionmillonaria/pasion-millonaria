@@ -10,7 +10,8 @@ import ListaProductos from "@/components/ListaProductos";
 import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
-import type { Cliente, MetodoPago, CanalMovimiento } from "@/lib/types";
+import type { Cliente, MetodoPago, CanalMovimiento, OrigenApartado } from "@/lib/types";
+import { useProfile } from "@/lib/context/ProfileContext";
 
 import type { SistemaTalla } from "@/lib/types";
 
@@ -49,6 +50,7 @@ let keyCounter = 0;
 export default function NuevoApartadoPage() {
   const supabase = createClient();
   const router = useRouter();
+  const { profile } = useProfile();
 
   // Cliente
   const [clienteNombre, setClienteNombre] = useState("");
@@ -70,6 +72,7 @@ export default function NuevoApartadoPage() {
   const [abono, setAbono] = useState("");
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
   const [canal, setCanal] = useState<CanalMovimiento>("venta_tienda");
+  const [origen, setOrigen] = useState<OrigenApartado>("tienda");
   const [observacion, setObservacion] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -185,6 +188,20 @@ export default function NuevoApartadoPage() {
 
     const idsCreados: number[] = [];
 
+    const { data: usuario } = await supabase
+      .from("usuarios")
+      .select("id")
+      .eq("rol", profile?.rol ?? "admin")
+      .eq("activo", true)
+      .order("nombre")
+      .limit(1)
+      .maybeSingle();
+    if (!usuario) {
+      toast.error("No se encontró el usuario creador del apartado");
+      setLoading(false);
+      return;
+    }
+
     // Crear un apartado por cada unidad de cada item
     let grupoId: number | null = null;
     let esElPrimero = true;
@@ -202,6 +219,8 @@ export default function NuevoApartadoPage() {
           en_tienda: item.enTienda,
           observacion: esElPrimero && observacion ? observacion : null,
           canal: canal,
+          origen,
+          usuario_id: usuario.id,
         }).select("id").single();
 
         if (apResult.error) { toast.error(`Error creando apartado: ${apResult.error.message}`); setLoading(false); return; }
@@ -224,7 +243,7 @@ export default function NuevoApartadoPage() {
             cantidad: 1,
             tipo: "salida",
             canal: "ajuste",
-            usuario_id: null,
+            usuario_id: usuario.id,
           });
           if (movError) {
             toast.error(`Error actualizando inventario para ${item.producto.referencia}: ${movError.message}`);
@@ -242,19 +261,19 @@ export default function NuevoApartadoPage() {
         grupo_id: grupoId,
         monto: abonoNum,
         metodo_pago: metodoPago,
-        registrado_por: null,
+        registrado_por: usuario.id,
       }).select("id").single();
       if (abonoErr || !abonoCreado) { toast.error("Error al guardar abono: " + (abonoErr?.message ?? "")); setLoading(false); return; }
 
       // La primera operación monetaria del día abre la caja automáticamente.
-      if (canal === "venta_tienda") {
+      {
         const esEfectivo = metodoPago === "efectivo";
         const ocurrioEn = new Date().toISOString();
         const { error: cajaErr } = await supabase.rpc("registrar_operacion_caja", {
           p_cliente_operacion_id: `ABONO-${abonoCreado.id}`,
           p_ocurrio_en: ocurrioEn,
           p_tipo: "ingreso",
-          p_descripcion: `Abono inicial apartado — ${clienteNombre.trim()}`,
+          p_descripcion: `Abono inicial apartado — ${origen === "tienda" ? "Tienda" : "WhatsApp"} — ${clienteNombre.trim()}`,
           p_valor: abonoNum,
           p_metodo_pago: metodoPago,
           p_monto_efectivo: esEfectivo ? abonoNum : 0,
@@ -538,6 +557,27 @@ export default function NuevoApartadoPage() {
               </div>
 
               <div>
+                <label className="label">Origen del apartado</label>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {([
+                    ["tienda", "Tienda"],
+                    ["whatsapp", "WhatsApp"],
+                  ] as [OrigenApartado, string][]).map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => setOrigen(value)}
+                      className={`py-2 rounded-xl text-xs font-bold ${origen === value ? "bg-brand-blue text-white" : "bg-gray-100 text-gray-500"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {origen === "whatsapp" && (
+                  <p className="text-[10px] text-orange-600 mb-2">Este apartado no genera comisión.</p>
+                )}
+              </div>
+
+              <div>
                 <label className="label">Canal de entrega</label>
                 <div className="grid grid-cols-3 gap-2">
                   {CANALES.map(c => (
@@ -552,7 +592,7 @@ export default function NuevoApartadoPage() {
                 </div>
                 {canal !== "venta_tienda" && (
                   <p className="text-[10px] text-orange-600 mt-1.5 font-medium flex items-center gap-1">
-                    <span>⚠️</span> Los abonos de este apartado NO se sumarán a la caja de la tienda.
+                    <span>ℹ️</span> Los abonos se registrarán en Caja. Este origen no genera comisión por prenda.
                   </p>
                 )}
               </div>

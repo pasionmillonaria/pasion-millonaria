@@ -211,6 +211,7 @@ CREATE TABLE apartados (
   estado      varchar(20)  NOT NULL CHECK (estado IN ('pendiente','entregado','cancelado')) DEFAULT 'pendiente',
   en_tienda   boolean      NOT NULL DEFAULT false,
   observacion text,
+  origen      varchar(20)  NOT NULL DEFAULT 'tienda' CHECK (origen IN ('tienda', 'whatsapp')),
   usuario_id  uuid         REFERENCES usuarios(id)
 );
 
@@ -327,6 +328,7 @@ SELECT
   p.referencia,
   t.nombre    AS talla,
   a.precio,
+  a.origen,
   COALESCE(SUM(ab.monto), 0)               AS total_abonado,
   a.precio - COALESCE(SUM(ab.monto), 0)    AS saldo,
   a.estado
@@ -336,7 +338,7 @@ JOIN productos p  ON p.id = a.producto_id
 JOIN tallas    t  ON t.id = a.talla_id
 LEFT JOIN abonos ab ON ab.apartado_id = a.id
 GROUP BY a.id, a.fecha, c.nombre, c.telefono,
-         p.referencia, t.nombre, a.precio, a.estado;
+         p.referencia, t.nombre, a.precio, a.estado, a.origen;
 
 -- ─────────────────────────────────────────
 -- Resumen de caja del día actual

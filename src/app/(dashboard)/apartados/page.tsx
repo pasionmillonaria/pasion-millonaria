@@ -23,6 +23,7 @@ interface GrupoApartado {
   totalAbonado: number;
   totalSaldo: number;
   canal: string;
+  origen: "tienda" | "whatsapp";
 }
 
 function agrupar(
@@ -44,6 +45,7 @@ function agrupar(
         totalAbonado: 0,
         totalSaldo: 0,
         canal: a.canal ?? "venta_tienda",
+        origen: a.origen ?? "tienda",
       });
     }
     const g = mapa.get(gid)!;
@@ -188,7 +190,13 @@ export default function ApartadosPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 truncate">{g.clienteNombre}</p>
-                 <div className="flex items-center gap-2 mt-0.5">
+                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <Badge
+                      variant={g.origen === "tienda" ? "info" : "success"}
+                      className="text-[9px] px-1.5 py-0.5 leading-none h-fit font-bold"
+                    >
+                      {g.origen === "tienda" ? "Tienda" : "WhatsApp"}
+                    </Badge>
                     <p className="text-xs text-gray-500 truncate">
                       {describirPrendasApartado(g.items)}
                     </p>

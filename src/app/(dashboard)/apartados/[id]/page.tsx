@@ -8,7 +8,7 @@ import { formatCurrency, formatDate, formatDateTime, formatMetodoPago, LABELS_ES
 import InputDinero from "@/components/ui/InputDinero";
 import SelectorTalla from "@/components/SelectorTalla";
 import ListaProductos from "@/components/ListaProductos";
-import type { Abono, MetodoPago, SistemaTalla, CanalMovimiento } from "@/lib/types";
+import type { Abono, MetodoPago, SistemaTalla, CanalMovimiento, OrigenApartado } from "@/lib/types";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { agruparPrendasApartado, calcularEstadoGrupoApartado, calcularResumenFinancieroApartado } from "@/lib/apartados";
 import Button from "@/components/ui/Button";
@@ -30,6 +30,7 @@ interface ItemGrupo {
   talla_id: number;
   observacion: string | null;
   canal: CanalMovimiento;
+  origen: OrigenApartado;
 }
 
 interface TallaStock {
@@ -55,6 +56,7 @@ interface GrupoDetalle {
   saldoAFavor: number;
   estadoGrupo: string;
   canal: CanalMovimiento;
+  origen: OrigenApartado;
 }
 
 const METODOS: { value: MetodoPago; label: string }[] = [
@@ -75,7 +77,7 @@ export default function ApartadoDetallePage() {
   const grupoId = Number(id);
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin } = useProfile();
+  const { isAdmin, profile } = useProfile();
 
   const [grupo, setGrupo] = useState<GrupoDetalle | null>(null);
   const [loading, setLoading] = useState(true);
@@ -133,7 +135,7 @@ export default function ApartadoDetallePage() {
 
     const [{ data: abonos }, { data: rawAps }] = await Promise.all([
       supabase.from("abonos").select("*").eq("grupo_id", grupoId).order("fecha", { ascending: false }),
-      supabase.from("apartados").select("id, producto_id, talla_id, en_tienda, cliente_id").in("id", apartadoIds),
+      supabase.from("apartados").select("id, producto_id, talla_id, en_tienda, cliente_id, origen, usuario_id").in("id", apartadoIds),
     ]);
 
     const itemsDetalle: ItemGrupo[] = items.map(a => {
@@ -151,6 +153,7 @@ export default function ApartadoDetallePage() {
         talla_id: raw?.talla_id ?? 0,
         observacion: a.observacion,
         canal: a.canal as CanalMovimiento ?? "venta_tienda",
+        origen: a.origen as OrigenApartado ?? "tienda",
       };
     });
 
@@ -165,6 +168,7 @@ export default function ApartadoDetallePage() {
       items: itemsDetalle, abonos: abonos ?? [],
       totalPrecio, totalAbonado, totalSaldo, saldoAFavor, estadoGrupo,
       canal: items[0].canal as CanalMovimiento ?? "venta_tienda",
+      origen: items[0].origen as OrigenApartado ?? "tienda",
     });
     setEditCanal(items[0].canal as CanalMovimiento ?? "venta_tienda");
     setLoading(false);
@@ -277,6 +281,20 @@ export default function ApartadoDetallePage() {
 
     const precioNum = parseFloat(nuevoPrecio) || nuevoProd.precio_base;
 
+    const { data: usuario } = await supabase
+      .from("usuarios")
+      .select("id")
+      .eq("rol", profile?.rol ?? "admin")
+      .eq("activo", true)
+      .order("nombre")
+      .limit(1)
+      .maybeSingle();
+    if (!usuario) {
+      toast.error("No se encontró el usuario creador del apartado");
+      setLoadingAgregar(false);
+      return;
+    }
+
     // Crear un apartado por cada unidad
     for (let i = 0; i < nuevaCantidad; i++) {
       const { error } = await supabase.from("apartados").insert({
@@ -287,6 +305,8 @@ export default function ApartadoDetallePage() {
         estado: "pendiente",
         en_tienda: nuevoEnTienda,
         grupo_id: grupoId,
+        origen: grupo.origen,
+        usuario_id: usuario.id,
       });
       if (error) { toast.error("Error: " + error.message); setLoadingAgregar(false); return; }
     }
@@ -295,7 +315,7 @@ export default function ApartadoDetallePage() {
     if (nuevoEnTienda) {
       await supabase.from("movimientos").insert({
         producto_id: nuevoProd.id, talla_id: nuevaTallaId,
-        ubicacion_id: 1, cantidad: nuevaCantidad, tipo: "salida", canal: "ajuste", usuario_id: null,
+        ubicacion_id: 1, cantidad: nuevaCantidad, tipo: "salida", canal: "ajuste", usuario_id: usuario.id,
       });
     }
 
@@ -390,18 +410,25 @@ export default function ApartadoDetallePage() {
       grupo_id: grupoId,
       monto,
       metodo_pago: metodoPagoAbono,
-      registrado_por: null,
+      registrado_por: (await supabase
+        .from("usuarios")
+        .select("id")
+        .eq("rol", profile?.rol ?? "admin")
+        .eq("activo", true)
+        .order("nombre")
+        .limit(1)
+        .maybeSingle()).data?.id ?? null,
     }).select("id").single();
     if (error || !abonoCreado) { toast.error("Error: " + (error?.message ?? "")); setLoadingAbono(false); return; }
 
     // La primera operación monetaria del día abre la caja automáticamente.
-    if (grupo.canal === "venta_tienda") {
+    {
       const esEfectivo = metodoPagoAbono === "efectivo";
       const { error: cajaErr } = await supabase.rpc("registrar_operacion_caja", {
         p_cliente_operacion_id: `ABONO-${abonoCreado.id}`,
         p_ocurrio_en: new Date().toISOString(),
         p_tipo: "ingreso",
-        p_descripcion: `Abono apartado #${grupoId} — ${grupo.clienteNombre}`,
+        p_descripcion: `Abono apartado #${grupoId} — ${grupo.origen === "tienda" ? "Tienda" : "WhatsApp"} — ${grupo.clienteNombre}`,
         p_valor: monto,
         p_metodo_pago: metodoPagoAbono,
         p_monto_efectivo: esEfectivo ? monto : 0,
@@ -637,6 +664,11 @@ export default function ApartadoDetallePage() {
 
       {/* Canal de entrega */}
       <div className="card mb-4 bg-blue-50/30 border-blue-100">
+        <p className="text-xs font-bold text-gray-500 mb-2">
+          Origen: <span className={grupo.origen === "tienda" ? "text-brand-blue" : "text-green-700"}>
+            {grupo.origen === "tienda" ? "Tienda" : "WhatsApp"}
+          </span>
+        </p>
         <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2 text-sm">
           <Store className="w-4 h-4 text-brand-blue" /> Canal de entrega
         </h3>
@@ -672,7 +704,7 @@ export default function ApartadoDetallePage() {
         </div>
         {editCanal !== "venta_tienda" && (
           <p className="text-[10px] text-brand-blue mt-2 font-medium flex items-center gap-1">
-            <span>ℹ️</span> Los abonos de este apartado NO se registrarán en el efectivo de la caja.
+            <span>ℹ️</span> Los abonos de este apartado se registran en Caja. El origen solo define la comisión.
           </p>
         )}
       </div>

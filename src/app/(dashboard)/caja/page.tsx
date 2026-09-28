@@ -20,6 +20,7 @@ import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 import toast from "react-hot-toast";
 import type { MetodoPago, TipoRegistroCaja, VResumenCaja } from "@/lib/types";
+import { canvasAArchivoPng, guardarArchivo, requiereNuevaInteraccion } from "@/lib/reporte-png";
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -843,6 +844,7 @@ export default function CajaPage() {
   const [syncing, setSyncing] = useState(false);
 
   const [registros, setRegistros] = useState<RegistroLocal[]>([]);
+  const [comisionesApartados, setComisionesApartados] = useState(0);
   const [saldoInicial, setSaldoInicial] = useState(0);
   const [cajaDiariaId, setCajaDiariaId] = useState<number | null>(null);
   const [cajaEstado, setCajaEstado] = useState<"abierta" | "cerrada">("abierta");
@@ -863,6 +865,7 @@ export default function CajaPage() {
   const [loadingDelete, setLoadingDelete] = useState(false);
   const [reporteParams, setReporteParams] = useState<ReporteParams | null>(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
+  const [archivoReporteListo, setArchivoReporteListo] = useState<File | null>(null);
 
   // ── Totales computados ─────────────────────────────────────
   const ventas = registros.filter(r => r.tipo === "venta");
@@ -878,7 +881,7 @@ export default function CajaPage() {
   const totalGastos = gastos.reduce((s, r) => s + r.valor, 0);
   const comisiones = ventas
     .filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000)
-    .reduce((s, r) => s + r.cantidad * 1000, 0);
+    .reduce((s, r) => s + r.cantidad * 1000, 0) + comisionesApartados;
   // Lo que salió de la caja hacia el guardado
   const totalGuardado = cajaFuerteItems.reduce((s, r) => s + r.valor, 0);
   // Lo que salió del guardado hacia afuera (pago mercancía, etc.)
@@ -924,13 +927,15 @@ export default function CajaPage() {
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     await supabase.rpc("cerrar_cajas_vencidas", { p_ahora: new Date().toISOString() });
-    const [{ data: cajaHoy }, { data: hist }] = await Promise.all([
+    const [{ data: cajaHoy }, { data: hist }, { data: comisionesData }] = await Promise.all([
       supabase.from("caja_diaria").select("*").eq("fecha", hoy).maybeSingle(),
       supabase.from("v_resumen_caja" as any).select("*").neq("fecha", hoy)
         .order("fecha", { ascending: false }).limit(30),
+      supabase.from("comisiones_apartados").select("monto_comision").eq("fecha_operativa", hoy),
     ]);
 
     setHistorial((hist as unknown as VResumenCaja[]) ?? []);
+    setComisionesApartados((comisionesData ?? []).reduce((sum, row) => sum + Number(row.monto_comision ?? 0), 0));
 
     if (cajaHoy) {
       let saldoCorrecto = cajaHoy.saldo_inicial;
@@ -1150,6 +1155,14 @@ export default function CajaPage() {
       setModalCerrar(false);
       toast.success("¡Caja cerrada!");
 
+      const archivo = await prepararReporte({
+        registros: regsSnapshot,
+        saldoInicial: saldoSnap,
+        fecha: hoy,
+        efectivoContado: contadoSnap,
+      });
+      if (archivo) toast.success("Reporte listo para guardar");
+
       await cargarDatos();
     } catch (err: any) {
       toast.error("Error: " + err.message);
@@ -1169,30 +1182,54 @@ export default function CajaPage() {
     }).eq("id", cajaDiariaId);
     if (error) { toast.error("Error al reabrir"); return; }
     setCajaEstado("abierta");
+    setArchivoReporteListo(null);
     toast.success("Caja reabierta");
     await cargarDatos();
   }
 
   // ── Descargar reporte ───────────────────────────────────────
-  async function descargarReporte(params: ReporteParams) {
+  async function prepararReporte(params: ReporteParams) {
     setGenerandoReporte(true);
     setReporteParams(params);
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     try {
       const html2canvas = (await import("html2canvas")).default;
       const el = document.getElementById("reporte-cierre");
-      if (!el) { toast.error("No se pudo generar el reporte"); return; }
+      if (!el) {
+        toast.error("No se pudo generar el reporte");
+        return null;
+      }
       const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
-      const link = document.createElement("a");
-      link.download = `cierre-caja-${params.fecha}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-      toast.success("Reporte descargado");
+      const archivo = await canvasAArchivoPng(canvas, `cierre-caja-${params.fecha}.png`);
+      setArchivoReporteListo(archivo);
+      return archivo;
     } catch {
       toast.error("Error generando reporte");
+      return null;
     } finally {
       setGenerandoReporte(false);
       setReporteParams(null);
+    }
+  }
+
+  async function descargarReporte(params: ReporteParams) {
+    const nombre = `cierre-caja-${params.fecha}.png`;
+    const archivo = archivoReporteListo?.name === nombre
+      ? archivoReporteListo
+      : await prepararReporte(params);
+
+    if (!archivo) return;
+
+    try {
+      const resultado = await guardarArchivo(archivo);
+      if (resultado === "compartido") toast.success("Reporte compartido");
+      if (resultado === "descargado") toast.success("Reporte descargado");
+    } catch (error) {
+      if (requiereNuevaInteraccion(error)) {
+        toast("Reporte listo. Toca de nuevo para guardarlo o compartirlo.", { icon: "📲" });
+        return;
+      }
+      toast.error("No se pudo guardar el reporte");
     }
   }
 
@@ -1367,6 +1404,9 @@ export default function CajaPage() {
                 const esRetiro = r.tipo === "caja_fuerte" && r.valor < 0;
                 const esCambio = /(?:Diferencia|Reembolso) por cambio/i.test(r.descripcion ?? "");
                 const referenciaCambio = r.descripcion?.match(/CAM-[A-Za-z0-9-]+/)?.[0];
+                const origenAbono = r.abonoId
+                  ? (/(?:WhatsApp)/i.test(r.descripcion ?? "") ? "whatsapp" : /(?:Tienda)/i.test(r.descripcion ?? "") ? "tienda" : null)
+                  : null;
                 const esPositivo = r.tipo === "venta" || r.tipo === "ingreso";
                 const colorValor = r.tipo === "venta" || r.tipo === "ingreso" ? "text-green-600"
                   : esRetiro ? "text-orange-600"
@@ -1456,9 +1496,14 @@ export default function CajaPage() {
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${getTipoBadge(r.tipo, r.valor)}`}>
                           {getTipoLabel(r.tipo, r.valor)}
                         </span>
+                        {origenAbono && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${origenAbono === "tienda" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                            {origenAbono === "tienda" ? "Tienda" : "WhatsApp"}
+                          </span>
+                        )}
                         {r.pending && <span className="text-xs text-orange-500 font-medium">• pendiente</span>}
                       </div>
-                      <p className="text-sm font-semibold text-gray-900 truncate">{r.descripcion}</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{r.descripcion?.replace(/\s+—\s+(?:Tienda|WhatsApp)(?=\s+—|$)/i, "")}</p>
                       <p className="text-xs text-gray-400">{r.hora.slice(0, 5)}</p>
                     </div>
                     <div className="flex items-center gap-2 ml-3">
@@ -1493,8 +1538,14 @@ export default function CajaPage() {
           {cajaEstado === "cerrada" && isAdmin && (
             <div className="space-y-3">
               <button onClick={() => descargarReporte({ registros, saldoInicial, fecha: hoy, efectivoContado: efectivoContadoNum || debeHaberEnCaja })}
-                className="w-full flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-colors">
-                <Download className="w-5 h-5" /> Descargar Reporte
+                disabled={generandoReporte}
+                className="w-full flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-4 rounded-2xl transition-colors">
+                <Download className="w-5 h-5" />
+                {generandoReporte
+                  ? "Preparando reporte…"
+                  : archivoReporteListo?.name === `cierre-caja-${hoy}.png`
+                    ? "Guardar o compartir reporte"
+                    : "Descargar reporte"}
               </button>
               <button onClick={reabrirCaja}
                 className="w-full flex items-center justify-center gap-2 bg-white border-2 border-gray-200 hover:border-gray-300 text-gray-700 font-bold py-3 rounded-2xl transition-colors">

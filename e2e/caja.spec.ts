@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, restGet } from "./helpers";
+import { loginAsAdmin, restGet, restRpc } from "./helpers";
 
 /**
  * Flujo crítico: cerrar la caja del día.
@@ -11,7 +11,10 @@ import { loginAsAdmin, restGet } from "./helpers";
  * Verifica que el cierre marca la caja_diaria como 'cerrada' en la base.
  */
 test("registrar un gasto y cerrar la caja del dia", async ({ page, request }) => {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const fechaOperativa = await restRpc(request, "fecha_operativa", {
+    p_instante: new Date().toISOString(),
+  });
+  const hoy = String(fechaOperativa.data);
 
   // La caja del dia arranca abierta (seed).
   const cajaAntes = await restGet(request, `caja_diaria?fecha=eq.${hoy}&select=estado`);
@@ -41,6 +44,14 @@ test("registrar un gasto y cerrar la caja del dia", async ({ page, request }) =>
 
   // Tras cerrar, la UI ofrece reabrir (estado cerrado).
   await expect(page.getByRole("button", { name: "Reabrir Caja" })).toBeVisible();
+
+  // El PNG queda preparado y una interacción explícita inicia la descarga.
+  const botonGuardar = page.getByRole("button", { name: "Guardar o compartir reporte" });
+  await expect(botonGuardar).toBeVisible();
+  const descargaPromise = page.waitForEvent("download");
+  await botonGuardar.click();
+  const descarga = await descargaPromise;
+  expect(descarga.suggestedFilename()).toBe(`cierre-caja-${hoy}.png`);
 
   // En la base, la caja de hoy quedo cerrada.
   const cajaDespues = await restGet(request, `caja_diaria?fecha=eq.${hoy}&select=estado`);

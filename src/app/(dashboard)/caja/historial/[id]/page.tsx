@@ -7,7 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate, formatMetodoPago } from "@/lib/utils";
 import Spinner from "@/components/ui/Spinner";
 import Button from "@/components/ui/Button";
+import toast from "react-hot-toast";
 import type { MetodoPago, TipoRegistroCaja, VResumenCaja } from "@/lib/types";
+import { canvasAArchivoPng, guardarArchivo, requiereNuevaInteraccion } from "@/lib/reporte-png";
 
 interface RegistroLocal {
   id: string;
@@ -61,8 +63,10 @@ export default function HistorialDetallePage() {
 
   const [caja, setCaja] = useState<VResumenCaja | null>(null);
   const [registros, setRegistros] = useState<RegistroLocal[]>([]);
+  const [comisionesApartados, setComisionesApartados] = useState(0);
   const [loading, setLoading] = useState(true);
   const [generando, setGenerando] = useState(false);
+  const [archivoReporteListo, setArchivoReporteListo] = useState<File | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -76,6 +80,11 @@ export default function HistorialDetallePage() {
       ]);
       setCaja(cajaData as unknown as VResumenCaja);
       setRegistros(parseRegistros(regsData ?? []));
+      const { data: comisionesData } = await supabase
+        .from("comisiones_apartados")
+        .select("monto_comision")
+        .eq("fecha_operativa", (cajaData as any)?.fecha ?? "");
+      setComisionesApartados((comisionesData ?? []).reduce((sum, row) => sum + Number(row.monto_comision ?? 0), 0));
       setLoading(false);
     }
     load();
@@ -83,16 +92,33 @@ export default function HistorialDetallePage() {
 
   async function descargar() {
     if (!caja) return;
-    setGenerando(true);
+
+    let archivo = archivoReporteListo;
+
     try {
-      const html2canvas = (await import("html2canvas")).default;
-      const el = document.getElementById("reporte-detalle");
-      if (!el) { return; }
-      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
-      const link = document.createElement("a");
-      link.download = `cierre-caja-${caja.fecha}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
+      if (!archivo) {
+        setGenerando(true);
+        const html2canvas = (await import("html2canvas")).default;
+        const el = document.getElementById("reporte-detalle");
+        if (!el) {
+          toast.error("No se pudo generar el reporte");
+          return;
+        }
+
+        const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
+        archivo = await canvasAArchivoPng(canvas, `cierre-caja-${caja.fecha}.png`);
+        setArchivoReporteListo(archivo);
+      }
+
+      const resultado = await guardarArchivo(archivo);
+      if (resultado === "compartido") toast.success("Reporte compartido");
+      if (resultado === "descargado") toast.success("Reporte descargado");
+    } catch (error) {
+      if (requiereNuevaInteraccion(error) && archivo) {
+        toast("Reporte listo. Toca de nuevo para guardarlo o compartirlo.", { icon: "📲" });
+        return;
+      }
+      toast.error("No se pudo guardar el reporte");
     } finally {
       setGenerando(false);
     }
@@ -118,7 +144,7 @@ export default function HistorialDetallePage() {
   const totalIngresos = ingresos.reduce((s, r) => s + r.valor, 0);
   const comisiones = ventas
     .filter(r => r.cantidad > 0 && r.valor / r.cantidad >= 30000)
-    .reduce((s, r) => s + r.cantidad * 1000, 0);
+    .reduce((s, r) => s + r.cantidad * 1000, 0) + comisionesApartados;
 
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-8 pt-6 pb-24">
@@ -138,7 +164,7 @@ export default function HistorialDetallePage() {
           onClick={descargar}
           loading={generando}
         >
-          <Download className="w-4 h-4" /> Descargar
+          <Download className="w-4 h-4" /> {archivoReporteListo ? "Guardar" : "Descargar"}
         </Button>
       </div>
 

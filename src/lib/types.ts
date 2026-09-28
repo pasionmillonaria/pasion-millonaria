@@ -7,6 +7,7 @@ export type Json =
   | Json[];
 
 export type Rol = "admin" | "empleado";
+export type OrigenApartado = "tienda" | "whatsapp";
 export type TipoMovimiento = "entrada" | "salida" | "devolucion";
 export type TipoRegistroCaja = "venta" | "gasto" | "ingreso" | "caja_fuerte";
 export type CanalMovimiento =
@@ -299,6 +300,7 @@ export interface Database {
           en_tienda: boolean;
           observacion: string | null;
           canal: CanalMovimiento;
+          origen: OrigenApartado;
           usuario_id: string | null;
         };
         Insert: {
@@ -311,6 +313,7 @@ export interface Database {
           en_tienda?: boolean;
           observacion?: string | null;
           canal?: CanalMovimiento;
+          origen?: OrigenApartado;
           usuario_id?: string | null;
         };
         Update: {
@@ -323,7 +326,39 @@ export interface Database {
           en_tienda?: boolean;
           observacion?: string | null;
           canal?: CanalMovimiento;
+          origen?: OrigenApartado;
           usuario_id?: string | null;
+        };
+        Relationships: [];
+      };
+      comisiones_apartados: {
+        Row: {
+          id: number;
+          apartado_id: number;
+          grupo_id: number;
+          usuario_id: string | null;
+          precio_unitario: number;
+          monto_comision: number;
+          fecha_operativa: string;
+          created_at: string;
+        };
+        Insert: {
+          apartado_id: number;
+          grupo_id: number;
+          usuario_id?: string | null;
+          precio_unitario: number;
+          monto_comision?: number;
+          fecha_operativa: string;
+          created_at?: string;
+        };
+        Update: {
+          apartado_id?: number;
+          grupo_id?: number;
+          usuario_id?: string | null;
+          precio_unitario?: number;
+          monto_comision?: number;
+          fecha_operativa?: string;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -549,6 +584,7 @@ export interface Database {
           en_tienda: boolean;
           observacion: string | null;
           canal: string;
+          origen: OrigenApartado;
         };
         Relationships: [];
       };
