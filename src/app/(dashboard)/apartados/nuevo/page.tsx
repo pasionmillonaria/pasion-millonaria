@@ -196,11 +196,10 @@ export default function NuevoApartadoPage() {
       .order("nombre")
       .limit(1)
       .maybeSingle();
-    if (!usuario) {
-      toast.error("No se encontró el usuario creador del apartado");
-      setLoading(false);
-      return;
-    }
+    // El catálogo de usuarios puede no estar disponible para el rol compartido
+    // en algunos entornos. El apartado debe poder crearse igualmente; la base
+    // conserva NULL cuando no existe un creador identificable.
+    const usuarioId = usuario?.id ?? null;
 
     // Crear un apartado por cada unidad de cada item
     let grupoId: number | null = null;
@@ -220,7 +219,7 @@ export default function NuevoApartadoPage() {
           observacion: esElPrimero && observacion ? observacion : null,
           canal: canal,
           origen,
-          usuario_id: usuario.id,
+          usuario_id: usuarioId,
         }).select("id").single();
 
         if (apResult.error) { toast.error(`Error creando apartado: ${apResult.error.message}`); setLoading(false); return; }
@@ -243,7 +242,7 @@ export default function NuevoApartadoPage() {
             cantidad: 1,
             tipo: "salida",
             canal: "ajuste",
-            usuario_id: usuario.id,
+            usuario_id: usuarioId,
           });
           if (movError) {
             toast.error(`Error actualizando inventario para ${item.producto.referencia}: ${movError.message}`);
@@ -261,7 +260,7 @@ export default function NuevoApartadoPage() {
         grupo_id: grupoId,
         monto: abonoNum,
         metodo_pago: metodoPago,
-        registrado_por: usuario.id,
+        registrado_por: usuarioId,
       }).select("id").single();
       if (abonoErr || !abonoCreado) { toast.error("Error al guardar abono: " + (abonoErr?.message ?? "")); setLoading(false); return; }
 
