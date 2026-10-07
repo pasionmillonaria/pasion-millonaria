@@ -77,7 +77,7 @@ export default function ApartadoDetallePage() {
   const grupoId = Number(id);
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin, profile } = useProfile();
+  const { isAdmin } = useProfile();
 
   const [grupo, setGrupo] = useState<GrupoDetalle | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,7 +135,7 @@ export default function ApartadoDetallePage() {
 
     const [{ data: abonos }, { data: rawAps }] = await Promise.all([
       supabase.from("abonos").select("*").eq("grupo_id", grupoId).order("fecha", { ascending: false }),
-      supabase.from("apartados").select("id, producto_id, talla_id, en_tienda, cliente_id, origen, usuario_id").in("id", apartadoIds),
+      supabase.from("apartados").select("id, producto_id, talla_id, en_tienda, cliente_id, origen").in("id", apartadoIds),
     ]);
 
     const itemsDetalle: ItemGrupo[] = items.map(a => {
@@ -281,20 +281,6 @@ export default function ApartadoDetallePage() {
 
     const precioNum = parseFloat(nuevoPrecio) || nuevoProd.precio_base;
 
-    const { data: usuario } = await supabase
-      .from("usuarios")
-      .select("id")
-      .eq("rol", profile?.rol ?? "admin")
-      .eq("activo", true)
-      .order("nombre")
-      .limit(1)
-      .maybeSingle();
-    if (!usuario) {
-      toast.error("No se encontró el usuario creador del apartado");
-      setLoadingAgregar(false);
-      return;
-    }
-
     // Crear un apartado por cada unidad
     for (let i = 0; i < nuevaCantidad; i++) {
       const { error } = await supabase.from("apartados").insert({
@@ -306,7 +292,6 @@ export default function ApartadoDetallePage() {
         en_tienda: nuevoEnTienda,
         grupo_id: grupoId,
         origen: grupo.origen,
-        usuario_id: usuario.id,
       });
       if (error) { toast.error("Error: " + error.message); setLoadingAgregar(false); return; }
     }
@@ -315,7 +300,7 @@ export default function ApartadoDetallePage() {
     if (nuevoEnTienda) {
       await supabase.from("movimientos").insert({
         producto_id: nuevoProd.id, talla_id: nuevaTallaId,
-        ubicacion_id: 1, cantidad: nuevaCantidad, tipo: "salida", canal: "ajuste", usuario_id: usuario.id,
+        ubicacion_id: 1, cantidad: nuevaCantidad, tipo: "salida", canal: "ajuste", usuario_id: null,
       });
     }
 
@@ -410,14 +395,6 @@ export default function ApartadoDetallePage() {
       grupo_id: grupoId,
       monto,
       metodo_pago: metodoPagoAbono,
-      registrado_por: (await supabase
-        .from("usuarios")
-        .select("id")
-        .eq("rol", profile?.rol ?? "admin")
-        .eq("activo", true)
-        .order("nombre")
-        .limit(1)
-        .maybeSingle()).data?.id ?? null,
     }).select("id").single();
     if (error || !abonoCreado) { toast.error("Error: " + (error?.message ?? "")); setLoadingAbono(false); return; }
 

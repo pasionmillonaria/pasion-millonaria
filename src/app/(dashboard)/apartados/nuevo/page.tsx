@@ -11,7 +11,6 @@ import SelectorTalla from "@/components/SelectorTalla";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
 import type { Cliente, MetodoPago, CanalMovimiento, OrigenApartado } from "@/lib/types";
-import { useProfile } from "@/lib/context/ProfileContext";
 
 import type { SistemaTalla } from "@/lib/types";
 
@@ -50,7 +49,6 @@ let keyCounter = 0;
 export default function NuevoApartadoPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { profile } = useProfile();
 
   // Cliente
   const [clienteNombre, setClienteNombre] = useState("");
@@ -188,19 +186,6 @@ export default function NuevoApartadoPage() {
 
     const idsCreados: number[] = [];
 
-    const { data: usuario } = await supabase
-      .from("usuarios")
-      .select("id")
-      .eq("rol", profile?.rol ?? "admin")
-      .eq("activo", true)
-      .order("nombre")
-      .limit(1)
-      .maybeSingle();
-    // El catálogo de usuarios puede no estar disponible para el rol compartido
-    // en algunos entornos. El apartado debe poder crearse igualmente; la base
-    // conserva NULL cuando no existe un creador identificable.
-    const usuarioId = usuario?.id ?? null;
-
     // Crear un apartado por cada unidad de cada item
     let grupoId: number | null = null;
     let esElPrimero = true;
@@ -219,7 +204,6 @@ export default function NuevoApartadoPage() {
           observacion: esElPrimero && observacion ? observacion : null,
           canal: canal,
           origen,
-          usuario_id: usuarioId,
         }).select("id").single();
 
         if (apResult.error) { toast.error(`Error creando apartado: ${apResult.error.message}`); setLoading(false); return; }
@@ -242,7 +226,7 @@ export default function NuevoApartadoPage() {
             cantidad: 1,
             tipo: "salida",
             canal: "ajuste",
-            usuario_id: usuarioId,
+            usuario_id: null,
           });
           if (movError) {
             toast.error(`Error actualizando inventario para ${item.producto.referencia}: ${movError.message}`);
@@ -260,7 +244,6 @@ export default function NuevoApartadoPage() {
         grupo_id: grupoId,
         monto: abonoNum,
         metodo_pago: metodoPago,
-        registrado_por: usuarioId,
       }).select("id").single();
       if (abonoErr || !abonoCreado) { toast.error("Error al guardar abono: " + (abonoErr?.message ?? "")); setLoading(false); return; }
 
