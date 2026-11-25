@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { procesarImagenProducto } from "../src/lib/product-images/server";
 import { PRODUCTOS_BUCKET } from "../src/lib/product-images/shared";
 
-const LOCAL_URL = "http://127.0.0.1:55321";
+const LOCAL_URL = "http://127.0.0.1:45321";
 const STAGING_REF = "ubwtkjgvabycymwopmvl";
 const PRODUCTION_REF = "egnfwkrkptkundfdhcyc";
 const EXTENSIONES = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"]);

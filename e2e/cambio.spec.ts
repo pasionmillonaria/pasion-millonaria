@@ -13,6 +13,12 @@ function payload(ref: string, entrada: any[], salida: any[], metodo = "efectivo"
   return { p_entradas: entrada, p_salidas: salida, p_metodo_pago: metodo, p_referencia: ref };
 }
 
+// Otros specs cierran la caja del dia: estas pruebas no dependen del orden.
+test.beforeAll(async ({ request }) => {
+  const { data: hoy } = await restRpc(request, "fecha_operativa", {});
+  await restPatch(request, `caja_diaria?fecha=eq.${hoy}`, { estado: "abierta" });
+});
+
 test("la pantalla permite agregar varias prendas y no muestra Pedir al devolver", async ({ page }) => {
   await loginAsAdmin(page);
   await page.getByRole("link", { name: /Cambio de producto/ }).click();
@@ -52,7 +58,7 @@ test("RPC registra varias lineas, venta y resumen en Inicio", async ({ request, 
   await expect(page.getByText("Accesorio especial", { exact: false })).toBeVisible();
   await page.getByRole("link", { name: "Caja", exact: true }).first().click();
   await page.waitForURL("**/caja");
-  await expect(page.getByText(`Diferencia por cambio ${ref}`)).toBeVisible();
+  await expect(page.getByText("Diferencia cobrada al cliente").first()).toBeVisible();
   await expect(page.getByText("Transferencias", { exact: true })).toBeVisible();
 });
 

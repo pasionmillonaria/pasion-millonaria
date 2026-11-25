@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { rechazarSiNoEsAdmin } from "@/lib/admin-session";
 import type { Database, CanalMovimiento, MetodoPago } from "@/lib/types";
 
 interface ItemUpdate {
@@ -28,6 +29,9 @@ const METODOS_VALIDOS: MetodoPago[] = [
 ];
 
 export async function POST(request: NextRequest) {
+  const rechazo = rechazarSiNoEsAdmin(request);
+  if (rechazo) return rechazo;
+
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 

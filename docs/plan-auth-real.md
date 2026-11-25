@@ -1,181 +1,184 @@
-# Plan detallado — Auth real + RBAC + RLS (Fase 2)
+# Plan — Usuarios reales, trazabilidad y permisos
 
-Migración del login falso (PIN en memoria) a **Supabase Auth con roles reales y
-seguridad a nivel de base (RLS)**. Es el cambio grande y delicado de la Fase 2: toca el
-login que usan los empleados a diario, así que va con red doble (staging primero, PIN de
-respaldo, rollback de un clic).
+Sustituye el plan del 2026-06-12 (sigue en el historial de git). Documento **resumible**:
+marca `[x]` al completar y actualiza el tablero.
 
-> Este documento es **resumible**: si se corta la sesión, lee primero el tablero de
-> abajo para saber en qué paso vamos. Marca cada `[ ]` como `[x]` al completarlo y
-> actualiza "Última actualización" y "Próximo paso".
+## Dónde nos quedamos
 
----
+- **Última actualización:** 2026-11-24. Fase 0 en local: suite 26/26. Nada en staging ni producción.
+- **Próximo paso:** revisión humana de la Fase 0; control previo de producción; luego Fase 1.
 
-## ░ DÓNDE NOS QUEDAMOS (actualizar siempre)
+| Fase | Qué | Estado |
+|------|-----|--------|
+| 0 | Huecos urgentes | código hecho y probado en local; sin publicar |
+| 1 | Usuarios + PIN sobre Supabase Auth | pendiente |
+| 2 | Autor automático, auditoría y vistas | pendiente |
+| 3 | Permisos en pantalla y en base | pendiente |
+| 4 | Switch en producción | pendiente |
+| 5 | Retirar acceso viejo | pendiente |
+| UI | Diseño v0 (PRs aparte) | pendiente |
 
-- **Última actualización:** 2026-06-12 — plan creado y **4 decisiones abiertas resueltas** (ver "Decisiones confirmadas"). Aún sin ejecutar ningún paso de código.
-- **Próximo paso:** Fase A, paso A1 (crear usuarios reales en Supabase Auth de staging: `admin@pasionmillonaria.app` y `supervisor@pasionmillonaria.app`, confirmación de email desactivada).
-- **Rama de trabajo sugerida:** `feat/auth-real` (crear desde `main` cuando arranque la ejecución).
-- **Resumen de avance:** 0 / 7 fases completas. Nada aplicado a prod. PIN sigue siendo el login activo.
+## Objetivo
 
-### Tablero de fases
+1. Saber **quién** hizo cada movimiento, edición y anulación.
+2. Que cada persona solo pueda hacer lo suyo, impuesto por la base.
+3. Entrada rápida: tocar perfil + PIN.
 
-| Fase | Qué | Entorno | Estado |
-|------|-----|---------|--------|
-| A | Fundación de identidad (usuarios + esquema de permisos + Auth Hook) | local → staging | ⬜ pendiente |
-| B | Capa Supabase SSR + middleware + helper de permisos | local | ⬜ pendiente |
-| C | Login nuevo en paralelo, detrás de feature flag | local → staging | ⬜ pendiente |
-| D | RLS con significado (policies por permiso) + RPCs | local → staging | ⬜ pendiente |
-| E | Pruebas en staging (Playwright de auth + RLS) | staging | ⬜ pendiente |
-| F | Switch en producción (una noche, PIN de respaldo) | producción | ⬜ pendiente |
-| G | Limpieza (quitar PIN/legacy, policies permisivas viejas) | local → staging → prod | ⬜ pendiente |
+Lo anterior a la activación no se puede atribuir: queda "Sin registro".
 
----
+## Reglas
 
-## Objetivo y principios
+- Las de `CLAUDE.md` Parte B. Solo `@supabase/ssr`; `getUser()` en servidor; zod en servidor.
+- Migraciones append-only y **con revisión humana**. Local, luego staging, luego prod de noche.
+- Un cambio a la vez: no mezclar auth, RLS y rediseño en el mismo deploy.
+- El autor lo pone la base (`auth.uid()`), nunca el cliente.
 
-- **Objetivo:** que la base de datos sepa **quién** es cada usuario y **qué puede hacer**,
-  cerrando el hueco de que hoy la seguridad es solo de pantalla (burlable).
-- **Aditivo primero, destructivo después** (expand → contract): se construye al lado del
-  PIN, sin romperlo, y solo al final se quita lo viejo.
-- **Staging siempre primero.** Prod solo en el paso F, de noche, con rollback de un clic.
-- **Un cambio a la vez.** Nunca mezclar "activar RLS" con "migrar auth" en el mismo deploy.
+## Permisos por persona (decisión 2026-11-24)
 
-## Estado actual verificado (2026-06-12)
+| Permiso | Persona 1 | Persona 2 | Persona 3 | Admin |
+|---|---|---|---|---|
+| Ver caja, inventario, apartados y reportes (`money.view`) | sí | sí | sí | sí |
+| Vender y registrar en caja (`pos.sell`, `caja.register`) | no | sí | sí | sí |
+| Cerrar caja (`caja.close`) | no | sí | sí | sí |
+| Apartados: crear, abonar, entregar, cancelar (`apartados.manage`) | no | sí | sí | sí |
+| Entradas, retiros, devoluciones, traslados, cambios (`inventory.manage`) | no | no | sí | sí |
+| Crear y editar productos (`products.manage`) | no | no | sí | sí |
+| Ajuste forzado de stock (`inventory.adjust`, nuevo) | no | no | **no** | sí |
+| Editar o anular ventas, abonos y registros de caja (`sales.void`, nuevo) | no | no | no | sí |
+| Ver auditoría (`audit.view`, nuevo) | sí | no | no | sí |
 
-- `src/lib/supabase/client.ts` — cliente de navegador (con guard de credenciales placeholder). ✅ existe
-- `src/lib/supabase/server.ts` — cliente de servidor con patrón correcto `getAll/setAll`, anon key. ✅ existe
-- `@supabase/ssr ^0.5.1` instalado. ✅
-- `src/app/login/` — directorio **vacío** (sin `page.tsx`). ⬜
-- **No existe** `middleware.ts`. ⬜
-- No hay uso de `getSession` ni de `@supabase/auth-helpers-nextjs` (bien). ✅
-- Login actual: `ProfileContext` en memoria + PIN vía `/api/verify-pin`. (legacy, se conserva hasta el switch)
+Roles provisionales: `supervisor`, `vendedor`, `operador`, `admin`. Persona 3 usa
+`inventory.manage` pero no `inventory.adjust`.
 
-## Reglas duras (no violar — del CLAUDE.md Parte B)
+## Lección del intento anterior (sept–oct 2026)
 
-1. Solo `@supabase/ssr`. **PROHIBIDO** `@supabase/auth-helpers-nextjs`. Cookies solo `getAll`/`setAll`.
-2. En servidor: `supabase.auth.getUser()`, **nunca** `getSession()`.
-3. Middleware = UX (redirects, refresh de sesión). La autorización real vive en **RLS + verificación en Server Actions/Route Handlers**.
-4. **RBAC por permisos, no por roles:** las policies y RPCs validan con `authorize('permiso')`, nunca comparando el rol directamente.
-5. La UI recibe un objeto `can: {...}` derivado del rol en **un solo helper** (`src/lib/permissions.ts`), nunca `isAdmin` disperso.
-6. Migraciones SQL y policies RLS: **se proponen, las revisa un humano** antes de aplicar a prod. Append-only en `supabase/migrations/`.
-7. Todo input se valida con **zod en servidor**, aunque el cliente ya valide.
-8. Sin emojis en UI; iconos solo de lucide-react.
+`fe33749` buscaba en `usuarios` la primera fila activa del rol y, si no aparecía, cancelaba la
+operación. El seed (local y, en junio, staging) trae esas filas; todo indica que en prod la
+búsqueda no devolvió ninguna (por confirmar). `d4dd69f` lo corrigió solo en `apartados/nuevo`;
+`apartados/[id]` siguió igual hasta `f82c854`, que lo quitó todo.
 
-## Decisiones de negocio (ya tomadas, no re-litigar)
+- **El registro de autor nunca bloquea una venta durante la transición.** Sin usuario válido:
+  se guarda NULL y queda una alerta. Columnas de autor NULL-able.
+- Despliegue en dos pasos: primero la base (compatible con la app vieja), luego la app.
+- Ningún paso depende de filas del seed: los usuarios se crean y verifican antes del switch.
 
-- Dos roles: **`admin`** (opera todo) y **`supervisor`** (solo lectura, ve TODO incluidos los montos). El "Empleado" actual del código ES el supervisor; la ocultación de montos actual es legacy a eliminar.
-- Permisos (enum `app_permission`): `pos.sell`, `caja.register`, `caja.close`, `inventory.manage`, `apartados.manage`, `products.manage`, `money.view`.
-  - `admin` → todos.
-  - `supervisor` → solo `money.view`.
-- Roles futuros (ej. `cajero`) = filas nuevas en `role_permissions`, sin tocar código ni policies.
+### Control previo de producción (solo lectura, lo ejecuta una persona)
 
----
+- [ ] Filas y roles de `usuarios` (sin PIN), destino de las FK de autor, policies, triggers,
+      funciones y migraciones aplicadas. Comparar contra local; toda diferencia se resuelve antes.
+- [ ] Reproducir esas diferencias en local y correr ahí toda la matriz.
 
-## FASE A — Fundación de identidad (aditivo, no toca el login actual)
+### Matriz de pruebas obligatoria
 
-> Construye la identidad y los permisos en la base. El PIN sigue funcionando igual.
+Cada operación: venta (pedido, caja y offline), gasto, ingreso, caja fuerte, entrada, traslado,
+devolución, cambio, retiro, ajuste forzado, apartado (crear, agregar, editar, recibir, abonar,
+cancelar, entregar), corregir y anular abono, editar y anular venta, borrar registro, cerrar y
+reabrir caja, producto y categoría. Cada una contra:
 
-- [ ] **A1.** Crear los usuarios reales en **Supabase Auth de staging** (dashboard → Authentication → Add user): uno `admin` y uno `supervisor`. Guardar correos/contraseñas en lugar seguro.
-- [ ] **A2.** Migración SQL `nnnn_auth_rbac_schema.sql` (REVISIÓN HUMANA) con, en una sola migración y con RLS + policies explícitas:
-  - `create type app_role as enum ('admin','supervisor');`
-  - `create type app_permission as enum ('pos.sell','caja.register','caja.close','inventory.manage','apartados.manage','products.manage','money.view');`
-  - tabla `user_roles (id, user_id uuid references auth.users unique, role app_role)` — RLS: cada quien lee su fila; escritura solo service_role/admin.
-  - tabla `role_permissions (id, role app_role, permission app_permission, unique(role,permission))` — RLS: lectura para autenticados; escritura solo admin.
-  - seed de `role_permissions`: admin = los 7 permisos; supervisor = `money.view`.
-- [ ] **A3.** Función `authorize(requested app_permission) returns boolean` `security definer`, `stable`, que lee el rol del claim del JWT (`auth.jwt() -> 'user_role'`) y verifica contra `role_permissions`. Sin acceso al claim, retorna false (default deny).
-- [ ] **A4.** **Auth Hook** (Custom Access Token Hook) que inyecta el claim `user_role` en el JWT a partir de `user_roles`. Configurarlo en staging (dashboard → Authentication → Hooks) + función `public.custom_access_token_hook(event jsonb)`.
-- [ ] **A5.** Aplicar A2–A4 en **local** (`supabase db reset` / `migration up`) y validar con SQL que `authorize()` responde bien para cada rol.
+- [ ] cuatro personas, permitido y rechazado (el rechazo no deja datos a medias);
+- [ ] `usuarios` vacía, usuario inactivo, sin rol o con sesión de Auth sin fila en `usuarios`;
+- [ ] sesión vencida a mitad de operación y cambio de usuario;
+- [ ] app vieja + base nueva, y rollback a app vieja con datos nuevos;
+- [ ] efecto exacto en stock, caja, autor y auditoría, sin duplicados;
+- [ ] migraciones sobre una base **con datos previos** y autor NULL, no solo desde cero.
 
-**Salida de fase:** la base ya sabe roles y permisos; el JWT de un usuario logueado trae su rol. El login de la app sigue siendo el PIN.
+## Fase 0 — Huecos urgentes
 
-## FASE B — Capa Supabase SSR + middleware (solo plomería, sin gating)
+- [ ] Repo privado; comprobar `pass.txt` y rotar lo que contenga (sigue en el historial).
+- [x] (local) Quitar la lectura anónima de `usuarios.pin` (y los PIN, si hay).
+- [x] (local) Exigir sesión admin (`tieneSesionAdmin` + `origenPermitido`) en `eliminar-venta`,
+      `editar-movimiento`, `corregir-abono`, `anular-abono` y `eliminar-registro-caja`.
+      Antes: confirmar `ADMIN_SESSION_SECRET` en Vercel; sin ella estas acciones fallarían.
+- [x] (local) Bloquear pantallas de escritura al perfil Empleados, y su cambio de canal en apartados.
+      (Escribir la URL ya devolvía al selector; el acceso posible era dentro de la app.)
+- [x] (local) Entrar como Empleados cierra la sesión admin que quedara viva.
+- Publicar primero el código (la migración es independiente). La sesión admin dura 8 h.
 
-- [ ] **B1.** Crear `src/lib/supabase/middleware.ts` (helper de refresh de sesión con `getAll/setAll`) y `middleware.ts` en la raíz que lo use. Solo refresca sesión; **no bloquea** todavía.
-- [ ] **B2.** Confirmar que `server.ts` usa `getUser()` (no `getSession()`) donde se lea el usuario.
-- [ ] **B3.** Helper `src/lib/permissions.ts`: función que, dado el usuario/rol, devuelve `can = { vender, manejarInventario, registrarCaja, cerrarCaja, manejarApartados, manejarProductos, verMontos }`. Una sola fuente de verdad.
-- [ ] **B4.** (Aún no se conecta a la UI — eso es Fase C tras el flag.)
+## Fase 1 — Identidad
 
-**Salida de fase:** la app puede leer la sesión real y calcular capacidades, sin cambiar el comportamiento visible.
+- [ ] Usuarios en Supabase Auth con correos internos; registro público desactivado.
+- [ ] `usuarios.id` = `auth.users.id` (las FK actuales ya apuntan a `usuarios`).
+- [ ] Enum de permisos, `role_permissions` y `authorize()`.
+- [ ] Login: el servidor valida el PIN con hash, bloquea tras 5 fallos y abre la sesión con
+      una clave fuerte derivada de un secreto del servidor. El PIN no es la contraseña de Auth.
+- [ ] Navegador con `createBrowserClient` y middleware de refresco de sesión.
+- [ ] Dispositivo compartido: bloqueo por inactividad, cambio rápido y nombre siempre visible.
+- [ ] Flag `NEXT_PUBLIC_AUTH_MODE` = `pin` | `supabase` (default `pin`).
 
-## FASE C — Login nuevo en paralelo (detrás de feature flag)
+## Fase 2 — Trazabilidad
 
-- [ ] **C1.** Feature flag por env var, p. ej. `NEXT_PUBLIC_AUTH_MODE = 'pin' | 'supabase'` (default `pin`). Decide qué login usa la app.
-- [ ] **C2.** Página real `src/app/login/page.tsx`: email + contraseña con `@supabase/ssr` (Server Action para `signInWithPassword`). Sin emojis; estilo de marca.
-- [ ] **C3.** Adaptar `ProfileContext`/guard para que, cuando `AUTH_MODE='supabase'`, el perfil salga del usuario real + `can` del helper; cuando `'pin'`, siga el flujo legacy. (Convivencia.)
-- [ ] **C4.** Cambiar las pantallas para condicionar acciones por `can.*` (no por `isAdmin`). Hacerlo de forma que con `AUTH_MODE='pin'` el comportamiento sea idéntico al de hoy (mapear el rol legacy a `can`).
-- [ ] **C5.** Probar en local con el flag en `supabase`: login real, capacidades correctas; y con `pin`: comportamiento idéntico al actual.
+- [ ] Trigger BEFORE INSERT que fija el autor en `movimientos`, `apartados`,
+      `registros_caja`, `abonos`, `gastos` y `caja_diaria`, ignorando lo que mande el cliente.
+- [ ] Tabla `auditoria` append-only: quién, cuándo, acción, entidad, antes, después, motivo.
+      Nadie la edita desde la app. Triggers en INSERT/UPDATE/DELETE de las tablas clave.
+- [ ] Anulaciones sin borrar: contramovimiento + marca `anulado_por`. Adaptar a la vez stock,
+      caja, reportes y pedidos para no contar la venta anulada.
+- [ ] Rutas con service role a RPCs llamadas con la sesión del usuario: con service role
+      `auth.uid()` es nulo.
+- [ ] Cron y cierres automáticos: autor "Sistema".
+- [ ] Cola offline de caja: guardar el usuario y sincronizar solo con su sesión. Distinguir
+      error de red de rechazo por permisos (hoy todo se encola como "sin conexión").
 
-**Salida de fase:** existe un login real funcional detrás de un interruptor; con el interruptor apagado, la tienda no nota nada.
+### Dónde se ve
 
-## FASE D — RLS con significado (expand) + RPCs
+- **Etiqueta pequeña con el nombre** en cada registro visible: pedidos del día, detalle de
+  venta, filas de caja e historial, apartados y abonos.
+- **Última sección de Reportes, "Auditoría"** (admin y persona 1): ajustes forzados, ventas
+  editadas o anuladas, abonos corregidos o anulados, registros de caja borrados, apartados
+  cancelados o con precio cambiado, retiros, cambios de precio de producto, reaperturas de
+  caja y cierres con diferencia. Filtros por persona, fecha y tipo; antes y después.
+- **Motivo obligatorio:** ajuste forzado, editar o anular, retiro, cancelar apartado y
+  reabrir caja.
 
-> Las policies hoy son permisivas (`true`). Aquí se crean las reales **sin quitar** las viejas todavía (expand), se validan, y se contraen en la Fase G.
+## Fase 3 — Permisos
 
-- [ ] **D1.** Migración (REVISIÓN HUMANA) que agrega policies nuevas por tabla usando `authorize('permiso')`:
-  - lectura para `admin` y `supervisor` (ambos ven todo, incluidos montos);
-  - escritura solo donde el permiso corresponda (ej. `movimientos` insert → `pos.sell`/`inventory.manage`; `registros_caja` → `caja.register`; etc.).
-- [ ] **D2.** Cerrar los huecos conocidos: `registros_caja` y `gastos` no deben permitir DELETE con anon. `movimientos` sigue append-only (anulación = contramovimiento + marca, no DELETE).
-- [ ] **D3.** Mantener las policies permisivas viejas activas en paralelo hasta validar (no romper el flujo con PIN/anon todavía).
+- [ ] `can` desde `src/lib/permissions.ts`; sustituir `isAdmin` en pantallas y rutas.
+- [ ] Policies viejas pasan a `TO anon` y las nuevas son `TO authenticated`. Si conviven para
+      el mismo rol, Postgres las une con OR y las nuevas no restringen nada.
+- [ ] Antes de restringir, revisar triggers y RPC que escriben como el usuario (stock,
+      abonos, caja): pasar a `SECURITY DEFINER` con `search_path` fijo lo necesario.
+- [ ] RPC `ajustar_stock` con `inventory.adjust`. Los apartados también usan `canal=ajuste`:
+      moverlos a RPC para poder prohibir ese insert directo.
+- [ ] Mover al servidor la corrección de `saldo_inicial` que hoy hace abrir Caja.
+- [ ] RPCs actuales: retirar EXECUTE de `anon` en la Fase 5 y validar `authorize()`.
 
-> **Movido fuera de este plan:** la RPC transaccional de venta (`UPDATE ... WHERE cantidad >= n`) que resuelve la race condition de stock se hará como **ítem aparte de la Fase 2**, después de la auth (decisión 2026-06-12). No se mezcla con la migración de auth.
+### Pruebas en staging
 
-**Salida de fase:** existen las reglas reales de seguridad, conviviendo con las viejas, listas para validarse.
+- [ ] Un test por persona, en pantalla y por REST, incluido falsificar `usuario_id`.
+- [ ] Cambio de usuario con cola offline pendiente.
+- [ ] Toda la suite E2E actual.
 
-## FASE E — Pruebas en staging
+## Fase 4 — Switch en producción
 
-- [ ] **E1.** Replicar A1–D en **staging**: usuarios, hook, migraciones (`db push` al ref de staging), seed de permisos.
-- [ ] **E2.** Env vars de Vercel **Preview** o config local apuntando a staging con `AUTH_MODE='supabase'`.
-- [ ] **E3.** Tests Playwright de auth (nuevos, en `e2e/`): 
-  - admin loguea y PUEDE vender / cerrar caja / crear apartado;
-  - supervisor loguea y NO puede registrar/editar/borrar, pero SÍ ve montos;
-  - sin sesión → redirige a `/login`.
-- [ ] **E4.** Tests de RLS: que un token de supervisor no pueda INSERT/UPDATE/DELETE donde no debe (verificación por REST con el token).
-- [ ] **E5.** Correr toda la suite E2E existente contra staging con `AUTH_MODE='supabase'` y que pase.
+- [ ] Control previo sin diferencias y matriz completa en verde en local y staging.
+- [ ] Backup, usuarios, migraciones y flag, de noche. PIN viejo de respaldo pocos días.
+- [ ] Verificación supervisada de cada operación al abrir; si una falla, rollback inmediato.
+- [ ] Rollback: revertir el deploy en Vercel. Mientras `anon` siga abierto, **la seguridad no
+      está completa**.
 
-**Salida de fase:** evidencia de que el sistema nuevo funciona y restringe bien, sin haber tocado prod.
+## Fase 5 — Retirar acceso viejo
 
-## FASE F — Switch en producción (una noche, fuera de horario)
+- [ ] Quitar policies y grants de `anon`, `ADMIN_PIN`, `verify-pin`, perfiles fijos y flag.
+- [ ] Actualizar `CLAUDE.md` y `DOCUMENTACION.md`.
 
-- [ ] **F1.** Backup de prod antes de nada (`supabase db dump`).
-- [ ] **F2.** Crear usuarios reales en **Auth de prod** (admin = dueño, supervisor = jefe).
-- [ ] **F3.** Configurar Auth Hook en prod + aplicar migraciones de A/D a prod (`db push` a prod, **revisión humana**, fuera de horario).
-- [ ] **F4.** Activar `AUTH_MODE='supabase'` en Vercel Production (deploy nocturno). Avisar a la tienda: "hoy inician sesión con su usuario nuevo".
-- [ ] **F5.** Dejar el **PIN como respaldo 1 semana** (no borrar nada legacy aún). 
-- [ ] **F6.** Monitorear (logins, errores). **Rollback** = revertir el deploy en Vercel (vuelve el PIN al instante).
+## Diseño v0 (`pos-system-design.zip`)
 
-**Salida de fase:** la tienda usa login real; la base impone la seguridad.
+Se adapta a mano; **no se copia el proyecto**. Usa Next 16, React 19 y Tailwind 4; la app usa
+Next 14, React 18 y Tailwind 3. PRs separados y en este orden:
 
-## FASE G — Limpieza (contract, ~1 semana después, ya estable)
+- [ ] **UI-1 Selector de perfil y PIN** (con Fase 1). Sin PIN demo, sin correo/contraseña, todos
+      los perfiles con PIN, sin perfiles inventados; logo real.
+- [ ] **UI-2 Menú** (con Fase 3). No usar `?perfil=` en la URL. Inventario y Caja no pueden
+      exigir permiso de escritura para verse: la persona 1 los necesita.
+- [ ] **UI-3 Inventario.** Solo apariencia; conservar datos, fotos, "mostrar más" y filtros.
+- [ ] **UI-4 Reportes.** El zip trae componentes sueltos con datos inventados y sin página;
+      usar solo lo que tenga datos reales.
 
-- [ ] **G1.** Quitar las policies permisivas viejas (`true/true`) que quedaron en paralelo.
-- [ ] **G2.** Eliminar el PIN / `ProfileContext` legacy / `/api/verify-pin` / `ADMIN_PIN`.
-- [ ] **G3.** Revisar las API routes con service role (`/api/eliminar-venta`, `/api/editar-movimiento`): que validen el rol del solicitante o migrar a RPCs con permiso.
-- [ ] **G4.** Quitar el feature flag `AUTH_MODE` (ya solo existe el modo real).
-- [ ] **G5.** Actualizar `CLAUDE.md` (mover lo de auth de "objetivo" a "estado actual") y este documento.
+El zip no trae Venta, Apartados, Caja, Productos ni Auditoría: se diseñan o se quedan igual.
 
-**Salida de fase:** ya no queda nada del login falso; el sistema queda solo con auth real.
+## Decisiones abiertas
 
----
-
-## Cómo se prueba cada paso (recordatorio)
-
-- DB / `authorize()` / hook → SQL directo en local (`docker exec ... psql`) y luego staging (pooler).
-- Login y capacidades → Playwright contra el laboratorio local con `AUTH_MODE='supabase'`.
-- RLS → peticiones REST con el token de cada rol, verificando que se permita/rechace.
-- Restaurar laboratorio entre corridas → `npx supabase db reset` (ya integrado en `e2e/global-setup.ts`).
-
-## Decisiones confirmadas (2026-06-12)
-
-- [x] **Usuarios sin correo real / sin verificación.** Se usan correos internos inventados (ej. `admin@pasionmillonaria.app`, `supervisor@pasionmillonaria.app`) con confirmación de email DESACTIVADA. Equivale a "usuario + contraseña", sin depender de correos reales.
-- [x] **El admin gestiona las contraseñas manualmente** desde el dashboard de Supabase. Sin magic link ni recuperación por correo.
-- [x] **Feature flag `NEXT_PUBLIC_AUTH_MODE`** con valores `'pin' | 'supabase'`, default `'pin'`.
-- [x] **La race condition de stock (RPC de venta) se hace APARTE**, como ítem separado de la Fase 2 (después de la auth). Razón: regla "un cambio a la vez"; el constraint `stock >= 0` ya impide el dato negativo, así que esto es pulir un error raro, no tapar una fuga. → El paso D3 sale de este plan (ver nota en Fase D).
-
-## Referencias
-
-- `CLAUDE.md` — Parte B (reglas duras de auth/seguridad, RBAC, modelo de roles).
-- `docs/deep-research-pos-maduracion.md` — §auth real y §RLS (el porqué y la técnica de cero downtime).
-- `docs/guia-entornos-y-docker.md` — flujo local → staging → prod.
-- `docs/guia-tests-playwright.md` — cómo correr y escribir los tests.
-- Supabase: Custom Claims & RBAC, Auth Hooks, `@supabase/ssr` + Next.js (links en la deep research).
+- [x] "Admin" es la cuarta persona: cuatro usuarios en total, sin cuenta aparte (2026-11-24).
+- [ ] `authorize()` consultando el rol en la base (recomendado; revocación inmediata) en vez
+      del Auth Hook de `CLAUDE.md`.
+- [ ] Tiempo de bloqueo por inactividad (propuesto: 5 minutos).

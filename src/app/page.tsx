@@ -17,12 +17,21 @@ function ProfileSelectScreen() {
   const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
 
-  function handleSelectPerfil(p: Profile) {
+  async function handleSelectPerfil(p: Profile) {
     if (p.rol === "admin") {
       setPin("");
       setPinError(false);
       setPinModal(true);
     } else {
+      // Al refrescar se pierde el perfil pero la cookie de admin sigue viva:
+      // entrar como empleado debe cerrarla siempre.
+      try {
+        const res = await fetch("/api/logout", { method: "POST" });
+        if (!res.ok) throw new Error();
+      } catch {
+        toast.error("No se pudo cerrar la sesión anterior. Intenta de nuevo.");
+        return;
+      }
       setProfile(p);
       router.push("/inicio");
     }

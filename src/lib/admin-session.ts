@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 export const ADMIN_SESSION_COOKIE = "pm_admin_session";
 export const ADMIN_SESSION_MAX_AGE = 8 * 60 * 60;
@@ -41,4 +41,27 @@ export function tieneSesionAdmin(request: NextRequest): boolean {
 export function origenPermitido(request: NextRequest): boolean {
   const origen = request.headers.get("origin");
   return !origen || origen === request.nextUrl.origin;
+}
+
+/**
+ * Guard de las rutas destructivas. Devuelve la respuesta de rechazo, o null si
+ * el solicitante tiene una sesion de administrador vigente.
+ */
+export function rechazarSiNoEsAdmin(request: NextRequest): NextResponse | null {
+  if (!getSecret()) {
+    return NextResponse.json(
+      { error: "Configuración de servidor incompleta. Falta ADMIN_SESSION_SECRET." },
+      { status: 503 },
+    );
+  }
+  if (!origenPermitido(request)) {
+    return NextResponse.json({ error: "Origen no permitido" }, { status: 403 });
+  }
+  if (!tieneSesionAdmin(request)) {
+    return NextResponse.json(
+      { error: "Tu sesión de administrador venció. Sal y vuelve a entrar con tu PIN." },
+      { status: 401 },
+    );
+  }
+  return null;
 }

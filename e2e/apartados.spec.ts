@@ -80,7 +80,7 @@ test("crear un apartado en tienda registra la fila y descuenta el stock", async 
 
   // Agregar un producto al carrito.
   await page.getByRole("button", { name: "Agregar", exact: true }).click();
-  await page.getByPlaceholder("Filtrar productos...").fill("Buso Millonarios Azul");
+  await page.getByPlaceholder("Buscar por nombre, código o categoría...").fill("Buso Millonarios Azul");
   await page.getByRole("button", { name: /Buso Millonarios Azul/ }).click();
 
   // Talla M (por defecto la prenda queda "en tienda/bodega").

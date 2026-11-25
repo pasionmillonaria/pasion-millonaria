@@ -655,9 +655,9 @@ export default function ApartadoDetallePage() {
             return (
               <button
                 key={c.value}
-                disabled={loadingCanal}
+                disabled={loadingCanal || !isAdmin}
                 onClick={async () => {
-                  if (activo) return;
+                  if (activo || !isAdmin) return;
                   setEditCanal(c.value);
                   setLoadingCanal(true);
                   const { error } = await supabase.from("apartados").update({ canal: c.value }).eq("grupo_id", grupoId);

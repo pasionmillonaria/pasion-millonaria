@@ -16,9 +16,9 @@ import { execSync } from "node:child_process";
  */
 export default function globalSetup() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (url !== "http://127.0.0.1:55321") {
+  if (url !== "http://127.0.0.1:45321") {
     throw new Error(
-      `[playwright] BLOQUEADO: NEXT_PUBLIC_SUPABASE_URL debe ser exactamente http://127.0.0.1:55321. Valor actual: ${url ?? "no definido"}`,
+      `[playwright] BLOQUEADO: NEXT_PUBLIC_SUPABASE_URL debe ser exactamente http://127.0.0.1:45321. Valor actual: ${url ?? "no definido"}`,
     );
   }
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
